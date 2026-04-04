@@ -1,0 +1,78 @@
+/* ─── Visualizer Tab ──────────────────────────────────────────────────────── */
+#tab-visualizer {
+  flex-direction: column;
+}
+
+.viz-container {
+  flex: 1;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+
+#viz-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.viz-track-overlay {
+  position: absolute;
+  bottom: 2rem;
+  left: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.viz-track-overlay img {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+}
+
+.viz-track-info h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.viz-track-info p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.viz-track-info p:last-child {
+  font-size: 0.7rem;
+}
+
+/* ─── Controls Panel ──────────────────────────────────────────────────────── */
+.controls-panel {
+  padding: 1rem 1.5rem;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.controls-panel h3 {
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem 1.25rem;
+  align-items: end;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}

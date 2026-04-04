@@ -1,0 +1,132 @@
+/* ─── Analytics Tab ────────────────────────────────────────────────────────── */
+.analytics-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.analytics-sidebar {
+  width: 300px;
+  min-width: 300px;
+  padding: 1.25rem;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.analytics-sidebar h3 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.analytics-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.analytics-section h4 {
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+}
+
+.analytics-section select,
+.analytics-section input {
+  margin-bottom: 0.5rem;
+}
+
+.analytics-main {
+  flex: 1;
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.analytics-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* ─── Playlist Preview ────────────────────────────────────────────────────── */
+.playlist-preview {
+  margin-top: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.playlist-preview h4 {
+  margin-bottom: 0.75rem;
+}
+
+.playlist-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.playlist-track-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.playlist-track-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.playlist-track-item img {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+}
+
+.playlist-track-item .track-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-track-item .track-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-track-item .track-artist {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.playlist-track-item .track-features {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.feature-badge {
+  background: var(--accent-dim);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+/* ─── Playlist Generator Controls ─────────────────────────────────────────── */
+.playlist-gen-controls .control-group {
+  margin-bottom: 0.75rem;
+}
+
+/* ─── Time Range Select ───────────────────────────────────────────────────── */
+.time-range-select {
+  margin-top: 0.75rem;
+}

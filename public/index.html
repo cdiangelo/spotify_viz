@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotify Viz &amp; Analytics</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/visualizer.css">
+  <link rel="stylesheet" href="/css/analytics.css">
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen">
+    <div class="login-container">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="64" height="64">
+            <circle cx="12" cy="12" r="12" fill="#1DB954"/>
+            <path d="M17.9 10.9C14.7 9 9.35 8.8 6.3 9.75c-.5.15-1-.15-1.15-.6-.15-.5.15-1 .6-1.15 3.55-1.1 9.4-.9 13.1 1.35.45.25.6.85.35 1.3-.25.35-.85.5-1.3.25zM16.8 13.4c-.25.35-.7.5-1.05.25-2.7-1.65-6.8-2.15-9.95-1.15-.4.1-.85-.1-.95-.5-.1-.4.1-.85.5-.95 3.65-1.1 8.15-.55 11.25 1.35.3.15.45.65.2 1zM15.6 15.85c-.2.3-.55.4-.85.2-2.35-1.45-5.3-1.75-8.8-.95-.35.05-.65-.15-.7-.45-.05-.35.15-.65.45-.7 3.8-.85 7.1-.5 9.7 1.1.35.15.4.55.2.8z" fill="white"/>
+          </svg>
+        </div>
+        <h1>Spotify Viz</h1>
+        <p class="subtitle">Visualization & Analytics Tool</p>
+      </div>
+      <button id="login-btn" class="btn-spotify" onclick="window.location.href='/login'">
+        <span>Log in with Spotify</span>
+      </button>
+      <p class="login-note">Connects via Spotify's secure OAuth. We never see your password.</p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app-screen" class="screen hidden">
+    <!-- Header -->
+    <header id="app-header">
+      <div class="header-left">
+        <span class="brand">Spotify Viz</span>
+        <div id="now-playing-mini" class="now-playing-mini hidden">
+          <img id="mini-art" src="" alt="">
+          <div class="mini-info">
+            <span id="mini-track"></span>
+            <span id="mini-artist"></span>
+          </div>
+        </div>
+      </div>
+      <nav id="tab-nav">
+        <button class="tab-btn active" data-tab="visualizer">Visualizer</button>
+        <button class="tab-btn" data-tab="data">My Data</button>
+        <button class="tab-btn" data-tab="analytics">Analytics</button>
+      </nav>
+      <div class="header-right">
+        <div id="user-info">
+          <img id="user-avatar" src="" alt="">
+          <span id="user-name"></span>
+        </div>
+        <button id="logout-btn" class="btn-sm" onclick="logout()">Logout</button>
+      </div>
+    </header>
+
+    <!-- Tab 1: Visualizer -->
+    <section id="tab-visualizer" class="tab-content active">
+      <div class="viz-container">
+        <canvas id="viz-canvas"></canvas>
+        <div id="viz-track-overlay" class="viz-track-overlay hidden">
+          <img id="viz-album-art" src="" alt="">
+          <div class="viz-track-info">
+            <h2 id="viz-track-name"></h2>
+            <p id="viz-artist-name"></p>
+            <p id="viz-album-name"></p>
+          </div>
+        </div>
+      </div>
+      <div id="viz-controls" class="controls-panel">
+        <h3>Visualizer Controls</h3>
+        <div class="control-grid">
+          <div class="control-group">
+            <label>Color Scheme</label>
+            <select id="color-scheme">
+              <option value="spotify">Spotify Green</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="fire">Fire</option>
+              <option value="ocean">Ocean</option>
+              <option value="neon">Neon</option>
+              <option value="pastel">Pastel</option>
+              <option value="monochrome">Monochrome</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Geometric Overlay</label>
+            <select id="geo-overlay">
+              <option value="none">None</option>
+              <option value="circles">Circles</option>
+              <option value="triangles">Triangles</option>
+              <option value="hexagons">Hexagons</option>
+              <option value="diamonds">Diamonds</option>
+              <option value="stars">Stars</option>
+              <option value="grid">Grid</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Overlay Size</label>
+            <input type="range" id="overlay-size" min="20" max="200" value="80">
+          </div>
+          <div class="control-group">
+            <label>Overlay Opacity</label>
+            <input type="range" id="overlay-opacity" min="0" max="100" value="40">
+          </div>
+          <div class="control-group">
+            <label>Bounce Intensity</label>
+            <input type="range" id="bounce-intensity" min="0" max="100" value="60">
+          </div>
+          <div class="control-group">
+            <label>Wave Frequency</label>
+            <input type="range" id="wave-freq" min="1" max="20" value="8">
+          </div>
+          <div class="control-group">
+            <label>Wave Size</label>
+            <input type="range" id="wave-size" min="10" max="200" value="80">
+          </div>
+          <div class="control-group">
+            <label>Color Flash</label>
+            <input type="checkbox" id="color-flash" checked>
+          </div>
+          <div class="control-group">
+            <label>Visualization Mode</label>
+            <select id="viz-mode">
+              <option value="bars">Bars</option>
+              <option value="wave">Waveform</option>
+              <option value="circular">Circular</option>
+              <option value="particles">Particles</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: My Data -->
+    <section id="tab-data" class="tab-content">
+      <div class="data-container">
+        <div class="data-sidebar">
+          <h3>Data Source</h3>
+          <div class="source-toggle">
+            <button class="source-btn active" data-source="api">Spotify API</button>
+            <button class="source-btn" data-source="upload">Upload JSON</button>
+          </div>
+
+          <div id="api-source" class="source-panel">
+            <p>Pull your listening history directly from Spotify.</p>
+            <button id="load-recent-btn" class="btn-primary">Load Recent Tracks</button>
+            <button id="load-top-tracks-btn" class="btn-primary">Load Top Tracks</button>
+            <button id="load-top-artists-btn" class="btn-primary">Load Top Artists</button>
+            <div class="time-range-select">
+              <label>Time Range</label>
+              <select id="api-time-range">
+                <option value="short_term">Last 4 weeks</option>
+                <option value="medium_term" selected>Last 6 months</option>
+                <option value="long_term">All time</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="upload-source" class="source-panel hidden">
+            <p>Upload your Spotify data export (JSON files from Privacy settings).</p>
+            <div class="upload-zone" id="upload-zone">
+              <div class="upload-icon">📁</div>
+              <p>Drop JSON files here or click to browse</p>
+              <input type="file" id="file-input" multiple accept=".json" hidden>
+            </div>
+            <div id="upload-status" class="upload-status"></div>
+          </div>
+
+          <div class="data-filters">
+            <h4>Filters</h4>
+            <div class="filter-group">
+              <label>Date Range</label>
+              <input type="date" id="filter-start">
+              <input type="date" id="filter-end">
+            </div>
+            <div class="filter-group">
+              <label>Min Plays</label>
+              <input type="number" id="filter-min-plays" min="1" value="1">
+            </div>
+            <button id="apply-filters-btn" class="btn-primary">Apply Filters</button>
+          </div>
+        </div>
+
+        <div class="data-main">
+          <div id="data-summary" class="data-summary">
+            <div class="stat-card">
+              <span class="stat-value" id="total-tracks">--</span>
+              <span class="stat-label">Total Tracks</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value" id="unique-artists">--</span>
+              <span class="stat-label">Unique Artists</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value" id="total-minutes">--</span>
+              <span class="stat-label">Minutes Listened</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value" id="top-genre">--</span>
+              <span class="stat-label">Top Genre</span>
+            </div>
+          </div>
+
+          <div class="data-charts">
+            <div class="chart-card">
+              <h4>Listening Over Time</h4>
+              <canvas id="chart-timeline"></canvas>
+            </div>
+            <div class="chart-card">
+              <h4>Top Artists</h4>
+              <canvas id="chart-top-artists"></canvas>
+            </div>
+            <div class="chart-card">
+              <h4>Top Tracks</h4>
+              <canvas id="chart-top-tracks"></canvas>
+            </div>
+            <div class="chart-card">
+              <h4>Listening by Hour</h4>
+              <canvas id="chart-by-hour"></canvas>
+            </div>
+          </div>
+
+          <div class="data-table-container">
+            <h4>Track History</h4>
+            <div class="table-scroll">
+              <table id="history-table">
+                <thead>
+                  <tr>
+                    <th>Track</th>
+                    <th>Artist</th>
+                    <th>Album</th>
+                    <th>Played At</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody id="history-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Analytics -->
+    <section id="tab-analytics" class="tab-content">
+      <div class="analytics-container">
+        <div class="analytics-sidebar">
+          <h3>Analytics</h3>
+
+          <div class="analytics-section">
+            <h4>Trend Analysis</h4>
+            <select id="trend-metric">
+              <option value="energy">Energy</option>
+              <option value="danceability">Danceability</option>
+              <option value="valence">Mood (Valence)</option>
+              <option value="tempo">Tempo</option>
+              <option value="acousticness">Acousticness</option>
+              <option value="instrumentalness">Instrumentalness</option>
+            </select>
+            <select id="trend-period">
+              <option value="short_term">Last 4 weeks</option>
+              <option value="medium_term" selected>Last 6 months</option>
+              <option value="long_term">All time</option>
+            </select>
+            <button id="analyze-trends-btn" class="btn-primary">Analyze Trends</button>
+          </div>
+
+          <div class="analytics-section">
+            <h4>Listening Behavior</h4>
+            <button id="behavior-btn" class="btn-primary">Generate Behavior Report</button>
+          </div>
+
+          <div class="analytics-section">
+            <h4>Playlist Generator</h4>
+            <div class="playlist-gen-controls">
+              <div class="control-group">
+                <label>Based on</label>
+                <select id="playlist-seed">
+                  <option value="top-tracks">My Top Tracks</option>
+                  <option value="recent">Recent Listens</option>
+                  <option value="mood">Mood Filter</option>
+                  <option value="energy">Energy Filter</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label>Target Energy</label>
+                <input type="range" id="target-energy" min="0" max="100" value="50">
+              </div>
+              <div class="control-group">
+                <label>Target Mood</label>
+                <input type="range" id="target-valence" min="0" max="100" value="50">
+              </div>
+              <div class="control-group">
+                <label>Target Danceability</label>
+                <input type="range" id="target-dance" min="0" max="100" value="50">
+              </div>
+              <div class="control-group">
+                <label>Track Count</label>
+                <input type="number" id="playlist-count" min="5" max="50" value="20">
+              </div>
+              <div class="control-group">
+                <label>Playlist Name</label>
+                <input type="text" id="playlist-name" placeholder="My Generated Playlist">
+              </div>
+              <button id="generate-playlist-btn" class="btn-primary btn-accent">Generate Playlist</button>
+              <button id="save-playlist-btn" class="btn-primary hidden">Save to Spotify</button>
+            </div>
+          </div>
+
+          <div class="analytics-section">
+            <h4>Profile</h4>
+            <button id="save-profile-btn" class="btn-primary">Save Profile Snapshot</button>
+            <button id="load-profile-btn" class="btn-primary">Load Profile</button>
+          </div>
+        </div>
+
+        <div class="analytics-main">
+          <div class="analytics-charts">
+            <div class="chart-card full-width">
+              <h4>Audio Feature Trends</h4>
+              <canvas id="chart-trends"></canvas>
+            </div>
+            <div class="chart-card">
+              <h4>Audio Feature Radar</h4>
+              <canvas id="chart-radar"></canvas>
+            </div>
+            <div class="chart-card">
+              <h4>Genre Distribution</h4>
+              <canvas id="chart-genres"></canvas>
+            </div>
+            <div class="chart-card full-width">
+              <h4>Listening Behavior Heatmap</h4>
+              <canvas id="chart-heatmap"></canvas>
+            </div>
+          </div>
+
+          <div id="generated-playlist" class="playlist-preview hidden">
+            <h4>Generated Playlist</h4>
+            <div id="playlist-tracks" class="playlist-tracks"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/visualizer.js"></script>
+  <script src="/js/data.js"></script>
+  <script src="/js/analytics.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
