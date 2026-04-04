@@ -23,6 +23,7 @@ async function initApp() {
   setupVisualizer();
   dataManager.init();
   analyticsManager.init();
+  industryManager.init();
 
   // Start polling current playback
   api.onTrackChange = onTrackChange;

@@ -287,6 +287,103 @@ app.get('/api/session', async (req, res) => {
   res.json({ authenticated: true });
 });
 
+// ─── MusicBrainz API Proxy ──────────────────────────────────────────────────
+
+const MB_BASE = 'https://musicbrainz.org/ws/2';
+const MB_HEADERS = {
+  'User-Agent': 'SpotifyViz/1.0 (spotify-viz-app)',
+  'Accept': 'application/json'
+};
+
+// Artist lookup by name
+app.get('/api/musicbrainz/artist', async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ error: 'query param required' });
+
+  try {
+    const url = `${MB_BASE}/artist/?query=artist:${encodeURIComponent(query)}&limit=5&fmt=json`;
+    const response = await fetch(url, { headers: MB_HEADERS });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'MusicBrainz request failed' });
+  }
+});
+
+// Artist details by MBID (includes releases, tags/genres)
+app.get('/api/musicbrainz/artist/:mbid', async (req, res) => {
+  try {
+    const url = `${MB_BASE}/artist/${req.params.mbid}?inc=releases+tags+ratings&fmt=json`;
+    const response = await fetch(url, { headers: MB_HEADERS });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'MusicBrainz request failed' });
+  }
+});
+
+// Release group (albums) for an artist
+app.get('/api/musicbrainz/releases/:mbid', async (req, res) => {
+  try {
+    const url = `${MB_BASE}/release-group?artist=${req.params.mbid}&type=album&limit=50&fmt=json`;
+    const response = await fetch(url, { headers: MB_HEADERS });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'MusicBrainz request failed' });
+  }
+});
+
+// ─── Last.fm API Proxy ──────────────────────────────────────────────────────
+
+const LASTFM_KEY = process.env.LASTFM_API_KEY || '';
+const LASTFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
+
+app.get('/api/lastfm/:method', async (req, res) => {
+  if (!LASTFM_KEY) {
+    return res.status(501).json({ error: 'Last.fm API key not configured', hint: 'Add LASTFM_API_KEY to .env' });
+  }
+
+  const method = req.params.method;
+  const params = new URLSearchParams({
+    ...req.query,
+    method,
+    api_key: LASTFM_KEY,
+    format: 'json'
+  });
+
+  try {
+    const response = await fetch(`${LASTFM_BASE}?${params.toString()}`);
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Last.fm request failed' });
+  }
+});
+
+// ─── Genius API Proxy ───────────────────────────────────────────────────────
+
+const GENIUS_TOKEN = process.env.GENIUS_API_TOKEN || '';
+
+app.get('/api/genius/search', async (req, res) => {
+  if (!GENIUS_TOKEN) {
+    return res.status(501).json({ error: 'Genius API token not configured', hint: 'Add GENIUS_API_TOKEN to .env' });
+  }
+
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: 'q param required' });
+
+  try {
+    const response = await fetch(`https://api.genius.com/search?q=${encodeURIComponent(q)}`, {
+      headers: { 'Authorization': `Bearer ${GENIUS_TOKEN}` }
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Genius request failed' });
+  }
+});
+
 // ─── Fallback to SPA ────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
