@@ -414,6 +414,20 @@ label {
 }
 
 /* ─── Upload Zone ─────────────────────────────────────────────────────────── */
+.btn-request-data {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.btn-request-data:hover {
+  background: var(--accent-dim);
+}
+
 .upload-zone {
   border: 2px dashed var(--border);
   border-radius: var(--radius-lg);
