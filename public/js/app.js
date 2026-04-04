@@ -81,6 +81,15 @@ function setupTabs() {
 function setupVisualizer() {
   visualizer = new Visualizer('viz-canvas');
   visualizer.start();
+
+  // Sync to Music button
+  document.getElementById('sync-music-btn')?.addEventListener('click', () => {
+    visualizer.toggleSync();
+    // If turning on and we already have a current track, fetch its features now
+    if (visualizer.syncActive && api.currentTrack) {
+      fetchAndSyncFeatures(api.currentTrack.id);
+    }
+  });
 }
 
 // ─── Playback Updates ────────────────────────────────────────────────────────
@@ -104,6 +113,22 @@ function onTrackChange(track) {
   document.getElementById('viz-track-name').textContent = track.name;
   document.getElementById('viz-artist-name').textContent = track.artists?.map(a => a.name).join(', ');
   document.getElementById('viz-album-name').textContent = track.album?.name;
+
+  // Auto-sync visualizer to new track's audio features
+  if (visualizer?.syncActive && track.id) {
+    fetchAndSyncFeatures(track.id);
+  }
+}
+
+async function fetchAndSyncFeatures(trackId) {
+  try {
+    const features = await api.getAudioFeatures([trackId]);
+    if (features && features[0]) {
+      visualizer.syncToTrack(features[0]);
+    }
+  } catch (err) {
+    console.error('Failed to fetch audio features for sync:', err);
+  }
 }
 
 function onPlaybackUpdate(data) {

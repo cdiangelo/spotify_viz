@@ -17,6 +17,14 @@ class Visualizer {
     this.simPhase = 0;
     this.useSimulated = true;
 
+    // Sync to music state
+    this.syncActive = false;
+    this.trackFeatures = null;
+    this.bpm = 120;
+    this.beatPhase = 0;
+    this.lastBeatTime = 0;
+    this.beatInterval = 500; // ms per beat (120 BPM default)
+
     // Settings
     this.settings = {
       colorScheme: 'spotify',
@@ -112,7 +120,29 @@ class Visualizer {
 
   getSimulatedData(length) {
     const data = new Uint8Array(length || 128);
-    this.simPhase += 0.03;
+    const now = performance.now();
+
+    // When synced, drive phase from BPM so pulses land on beats
+    if (this.syncActive && this.trackFeatures) {
+      // Beats per ms → radians per frame
+      const bpmSpeed = (this.bpm / 60) * (Math.PI * 2) / 60; // per frame at ~60fps
+      this.simPhase += bpmSpeed;
+
+      // Beat pulse: sharp spike on each beat
+      this.beatPhase = ((now % this.beatInterval) / this.beatInterval) * Math.PI * 2;
+    } else {
+      this.simPhase += 0.03;
+      this.beatPhase = 0;
+    }
+
+    // Beat envelope: 1.0 on beat, decays quickly
+    const beatPulse = this.syncActive
+      ? Math.pow(Math.max(0, Math.cos(this.beatPhase)), 4)
+      : 0;
+
+    const featureEnergy = this.syncActive && this.trackFeatures
+      ? this.trackFeatures.energy || 0.5
+      : 0.5;
 
     for (let i = 0; i < data.length; i++) {
       const freq = (i / data.length);
@@ -128,7 +158,10 @@ class Visualizer {
       // Random flutter
       const noise = (Math.random() - 0.5) * 25;
 
-      const val = bassPeak + midPeak + treblePeak + wave1 + wave2 + wave3 + noise;
+      // Beat-synced boost: bass bins get a big kick on each beat
+      const beatBoost = beatPulse * (1 - freq) * 120 * featureEnergy;
+
+      const val = bassPeak + midPeak + treblePeak + wave1 + wave2 + wave3 + noise + beatBoost;
       data[i] = Math.max(0, Math.min(255, val));
     }
 
@@ -468,6 +501,108 @@ class Visualizer {
     }
     this.ctx.closePath();
     this.ctx.stroke();
+  }
+
+  // ─── Sync to Music ─────────────────────────────────────────────────────────
+
+  toggleSync() {
+    this.syncActive = !this.syncActive;
+    const btn = document.getElementById('sync-music-btn');
+    btn?.classList.toggle('active', this.syncActive);
+
+    if (!this.syncActive) {
+      // Restore defaults when turning off
+      this.resetControlsToDefaults();
+    } else if (this.trackFeatures) {
+      // Re-apply current track features
+      this.applyTrackFeatures(this.trackFeatures);
+    }
+  }
+
+  syncToTrack(features) {
+    this.trackFeatures = features;
+    if (!features || !this.syncActive) return;
+    this.applyTrackFeatures(features);
+  }
+
+  applyTrackFeatures(f) {
+    // BPM → controls the pulse speed of the simulated waveform
+    this.bpm = f.tempo || 120;
+    this.beatInterval = 60000 / this.bpm;
+
+    // Energy (0-1) → bounce intensity + wave size
+    const energy = f.energy || 0.5;
+    this.settings.bounceIntensity = 0.2 + energy * 0.8;
+    this.settings.waveSize = 30 + energy * 170;
+
+    // Danceability (0-1) → wave frequency (higher dance = tighter waves)
+    const dance = f.danceability || 0.5;
+    this.settings.waveFreq = 3 + Math.round(dance * 17);
+
+    // Valence/mood (0-1) → color scheme
+    const valence = f.valence || 0.5;
+    if (valence > 0.75) this.settings.colorScheme = 'rainbow';
+    else if (valence > 0.55) this.settings.colorScheme = 'neon';
+    else if (valence > 0.35) this.settings.colorScheme = 'spotify';
+    else if (valence > 0.15) this.settings.colorScheme = 'ocean';
+    else this.settings.colorScheme = 'monochrome';
+
+    // Acousticness → overlay (acoustic = organic shapes, electronic = geometric)
+    const acoustic = f.acousticness || 0;
+    if (acoustic > 0.6) this.settings.geoOverlay = 'circles';
+    else if (acoustic > 0.3) this.settings.geoOverlay = 'hexagons';
+    else this.settings.geoOverlay = 'diamonds';
+
+    // Instrumentalness → overlay opacity (instrumental = more visible overlays)
+    this.settings.overlayOpacity = 0.15 + (f.instrumentalness || 0) * 0.5;
+    this.settings.overlaySize = 50 + energy * 100;
+
+    // High energy + dance → flash on, else off
+    this.settings.colorFlash = energy > 0.5 && dance > 0.4;
+
+    // Energy → viz mode preference
+    if (energy > 0.75) this.settings.vizMode = 'particles';
+    else if (dance > 0.7) this.settings.vizMode = 'circular';
+    else if (energy > 0.4) this.settings.vizMode = 'bars';
+    else this.settings.vizMode = 'wave';
+
+    // Update the UI controls to reflect the new values
+    this.syncControlsToUI();
+  }
+
+  syncControlsToUI() {
+    const s = this.settings;
+    this.setControl('color-scheme', s.colorScheme);
+    this.setControl('geo-overlay', s.geoOverlay);
+    this.setControl('overlay-size', s.overlaySize);
+    this.setControl('overlay-opacity', s.overlayOpacity * 100);
+    this.setControl('bounce-intensity', s.bounceIntensity * 100);
+    this.setControl('wave-freq', s.waveFreq);
+    this.setControl('wave-size', s.waveSize);
+    this.setControl('color-flash', s.colorFlash);
+    this.setControl('viz-mode', s.vizMode);
+  }
+
+  setControl(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = value;
+    else el.value = value;
+  }
+
+  resetControlsToDefaults() {
+    this.settings.colorScheme = 'spotify';
+    this.settings.geoOverlay = 'none';
+    this.settings.overlaySize = 80;
+    this.settings.overlayOpacity = 0.4;
+    this.settings.bounceIntensity = 0.6;
+    this.settings.waveFreq = 8;
+    this.settings.waveSize = 80;
+    this.settings.colorFlash = true;
+    this.settings.vizMode = 'bars';
+    this.bpm = 120;
+    this.beatInterval = 500;
+    this.syncControlsToUI();
   }
 
   // ─── Utility ───────────────────────────────────────────────────────────────
