@@ -30,6 +30,7 @@ class Visualizer {
       colorScheme: 'spotify',
       geoOverlay: 'none',
       overlaySize: 80,
+      overlayOverlap: 0,
       overlayOpacity: 0.4,
       bounceIntensity: 0.6,
       waveFreq: 8,
@@ -87,6 +88,7 @@ class Visualizer {
     bind('color-scheme', 'colorScheme');
     bind('geo-overlay', 'geoOverlay');
     bind('overlay-size', 'overlaySize');
+    bind('overlay-overlap', 'overlayOverlap', v => v / 100);
     bind('overlay-opacity', 'overlayOpacity', v => v / 100);
     bind('bounce-intensity', 'bounceIntensity', v => v / 100);
     bind('wave-freq', 'waveFreq');
@@ -383,63 +385,84 @@ class Visualizer {
   // ─── Geometric Overlays ────────────────────────────────────────────────────
 
   drawGeoOverlay(energy, bassEnergy) {
-    const { geoOverlay, overlaySize, overlayOpacity } = this.settings;
+    const { geoOverlay, overlaySize, overlayOpacity, overlayOverlap } = this.settings;
     const bounce = bassEnergy * this.settings.bounceIntensity * 20;
     const colors = this.colorSchemes[this.settings.colorScheme];
     const baseColor = colors[0];
-    const alpha = overlayOpacity;
 
-    this.ctx.strokeStyle = this.hexToRgba(baseColor, alpha);
+    this.ctx.strokeStyle = this.hexToRgba(baseColor, overlayOpacity);
     this.ctx.lineWidth = 1.5;
 
     const size = overlaySize + bounce;
-    const cols = Math.ceil(this.width / (size * 1.5)) + 1;
-    const rows = Math.ceil(this.height / (size * 1.5)) + 1;
+
+    // Overlap controls spacing between shape centers:
+    //   overlap=0 → spacing = size (corners just touching, half-width gap between edges)
+    //   overlap=1 → spacing = size * 0.5 (edge reaches neighboring center / midpoint)
+    // Linear interpolation: spacing = size * (1 - overlap * 0.5)
+    const spacing = size * (1 - overlayOverlap * 0.5);
+    const pad = spacing * 0.5;
+
+    const cols = Math.ceil(this.width / spacing) + 2;
+    const rows = Math.ceil(this.height / spacing) + 2;
 
     switch (geoOverlay) {
-      case 'circles':
+      case 'circles': {
+        const radius = size * 0.4;
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const x = c * size * 1.5 + size * 0.75;
-            const y = r * size * 1.5 + size * 0.75;
+            const x = c * spacing + pad;
+            const y = r * spacing + pad;
             this.ctx.beginPath();
-            this.ctx.arc(x, y, size * 0.4, 0, Math.PI * 2);
+            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
             this.ctx.stroke();
           }
         }
         break;
+      }
 
-      case 'triangles':
-        for (let r = 0; r < rows; r++) {
+      case 'triangles': {
+        const h = size * 0.4;
+        const w = size * 0.35;
+        const rowSpacing = spacing * 0.866; // sin(60°) for tighter triangle packing
+        const tRows = Math.ceil(this.height / rowSpacing) + 2;
+        for (let r = 0; r < tRows; r++) {
           for (let c = 0; c < cols; c++) {
-            const x = c * size * 1.2 + (r % 2) * size * 0.6;
-            const y = r * size;
+            const x = c * spacing + (r % 2) * spacing * 0.5;
+            const y = r * rowSpacing;
             this.ctx.beginPath();
-            this.ctx.moveTo(x, y - size * 0.4);
-            this.ctx.lineTo(x - size * 0.35, y + size * 0.3);
-            this.ctx.lineTo(x + size * 0.35, y + size * 0.3);
+            this.ctx.moveTo(x, y - h);
+            this.ctx.lineTo(x - w, y + h * 0.75);
+            this.ctx.lineTo(x + w, y + h * 0.75);
             this.ctx.closePath();
             this.ctx.stroke();
           }
         }
         break;
+      }
 
-      case 'hexagons':
-        for (let r = 0; r < rows; r++) {
+      case 'hexagons': {
+        const radius = size * 0.45;
+        const hSpacing = spacing;
+        const vSpacing = spacing * 0.866;
+        const hRows = Math.ceil(this.height / vSpacing) + 2;
+        for (let r = 0; r < hRows; r++) {
           for (let c = 0; c < cols; c++) {
-            const x = c * size * 1.5 + (r % 2) * size * 0.75;
-            const y = r * size * 1.3;
-            this.drawHexagon(x, y, size * 0.45);
+            const x = c * hSpacing + (r % 2) * hSpacing * 0.5;
+            const y = r * vSpacing;
+            this.drawHexagon(x, y, radius);
           }
         }
         break;
+      }
 
-      case 'diamonds':
-        for (let r = 0; r < rows; r++) {
+      case 'diamonds': {
+        const s = size * 0.4;
+        const rowSpacing = spacing * 0.707; // diagonal packing
+        const dRows = Math.ceil(this.height / rowSpacing) + 2;
+        for (let r = 0; r < dRows; r++) {
           for (let c = 0; c < cols; c++) {
-            const x = c * size * 1.2 + (r % 2) * size * 0.6;
-            const y = r * size;
-            const s = size * 0.4;
+            const x = c * spacing + (r % 2) * spacing * 0.5;
+            const y = r * rowSpacing;
             this.ctx.beginPath();
             this.ctx.moveTo(x, y - s);
             this.ctx.lineTo(x + s, y);
@@ -450,24 +473,28 @@ class Visualizer {
           }
         }
         break;
+      }
 
-      case 'stars':
+      case 'stars': {
+        const outerR = size * 0.4;
+        const innerR = size * 0.2;
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const x = c * size * 1.5 + (r % 2) * size * 0.75;
-            const y = r * size * 1.5 + size * 0.75;
-            this.drawStar(x, y, 5, size * 0.4, size * 0.2);
+            const x = c * spacing + (r % 2) * spacing * 0.5 + pad;
+            const y = r * spacing + pad;
+            this.drawStar(x, y, 5, outerR, innerR);
           }
         }
         break;
+      }
 
       case 'grid':
         this.ctx.beginPath();
-        for (let x = 0; x < this.width; x += size) {
+        for (let x = 0; x < this.width; x += spacing) {
           this.ctx.moveTo(x, 0);
           this.ctx.lineTo(x, this.height);
         }
-        for (let y = 0; y < this.height; y += size) {
+        for (let y = 0; y < this.height; y += spacing) {
           this.ctx.moveTo(0, y);
           this.ctx.lineTo(this.width, y);
         }
@@ -573,6 +600,7 @@ class Visualizer {
     this.setControl('color-scheme', s.colorScheme);
     this.setControl('geo-overlay', s.geoOverlay);
     this.setControl('overlay-size', s.overlaySize);
+    this.setControl('overlay-overlap', s.overlayOverlap * 100);
     this.setControl('overlay-opacity', s.overlayOpacity * 100);
     this.setControl('bounce-intensity', s.bounceIntensity * 100);
     this.setControl('wave-freq', s.waveFreq);
@@ -591,6 +619,7 @@ class Visualizer {
     this.settings.colorScheme = 'spotify';
     this.settings.geoOverlay = 'none';
     this.settings.overlaySize = 80;
+    this.settings.overlayOverlap = 0;
     this.settings.overlayOpacity = 0.4;
     this.settings.bounceIntensity = 0.6;
     this.settings.waveFreq = 8;
