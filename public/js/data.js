@@ -5,6 +5,7 @@ class DataManager {
     this.historyData = [];
     this.filteredData = [];
     this.charts = {};
+    this.lastLoadAction = null;
     this.chartDefaults = {
       responsive: true,
       maintainAspectRatio: false,
@@ -39,6 +40,11 @@ class DataManager {
     document.getElementById('load-top-tracks-btn')?.addEventListener('click', () => this.loadTopTracks());
     document.getElementById('load-top-artists-btn')?.addEventListener('click', () => this.loadTopArtists());
 
+    // Time range change → auto-reload whatever was last loaded
+    document.getElementById('api-time-range')?.addEventListener('change', () => {
+      if (this.lastLoadAction) this.lastLoadAction();
+    });
+
     // Upload
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('file-input');
@@ -62,12 +68,43 @@ class DataManager {
     document.getElementById('apply-filters-btn')?.addEventListener('click', () => this.applyFilters());
   }
 
+  // ─── Loading State ─────────────────────────────────────────────────────────
+
+  setButtonLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    if (loading) {
+      btn.dataset.originalText = btn.textContent;
+      btn.textContent = 'Loading...';
+      btn.disabled = true;
+    } else {
+      btn.textContent = btn.dataset.originalText || btn.textContent;
+      btn.disabled = false;
+    }
+  }
+
+  showError(btnId, msg) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.textContent = msg;
+    btn.disabled = false;
+    setTimeout(() => {
+      btn.textContent = btn.dataset.originalText || 'Load';
+    }, 3000);
+  }
+
   // ─── API Data Loading ──────────────────────────────────────────────────────
 
   async loadRecentTracks() {
+    this.lastLoadAction = () => this.loadRecentTracks();
+    this.setButtonLoading('load-recent-btn', true);
+
     try {
       const data = await api.getRecentlyPlayed(50);
-      if (!data.items) return;
+      if (!data.items || !data.items.length) {
+        this.showError('load-recent-btn', 'No recent tracks found');
+        return;
+      }
 
       const tracks = data.items.map(item => ({
         trackName: item.track.name,
@@ -81,16 +118,24 @@ class DataManager {
       this.historyData = tracks;
       this.filteredData = tracks;
       this.updateUI();
+      this.setButtonLoading('load-recent-btn', false);
     } catch (err) {
       console.error('Failed to load recent tracks:', err);
+      this.showError('load-recent-btn', 'Failed to load');
     }
   }
 
   async loadTopTracks() {
+    this.lastLoadAction = () => this.loadTopTracks();
+    this.setButtonLoading('load-top-tracks-btn', true);
+
     try {
       const range = document.getElementById('api-time-range')?.value || 'medium_term';
       const data = await api.getTopTracks(range, 50);
-      if (!data.items) return;
+      if (!data.items || !data.items.length) {
+        this.showError('load-top-tracks-btn', 'No top tracks found');
+        return;
+      }
 
       const tracks = data.items.map((item, i) => ({
         trackName: item.name,
@@ -105,20 +150,46 @@ class DataManager {
       this.historyData = tracks;
       this.filteredData = tracks;
       this.updateUI();
+      this.setButtonLoading('load-top-tracks-btn', false);
     } catch (err) {
       console.error('Failed to load top tracks:', err);
+      this.showError('load-top-tracks-btn', 'Failed to load');
     }
   }
 
   async loadTopArtists() {
+    this.lastLoadAction = () => this.loadTopArtists();
+    this.setButtonLoading('load-top-artists-btn', true);
+
     try {
       const range = document.getElementById('api-time-range')?.value || 'medium_term';
       const data = await api.getTopArtists(range, 50);
-      if (!data.items) return;
+      if (!data.items || !data.items.length) {
+        this.showError('load-top-artists-btn', 'No top artists found');
+        return;
+      }
 
+      // Convert artists into track-like rows so summary/table/charts all work
+      const artistRows = data.items.map((artist, i) => ({
+        trackName: artist.genres?.slice(0, 2).join(', ') || '--',
+        artistName: artist.name,
+        albumName: `Popularity: ${artist.popularity}`,
+        playedAt: null,
+        durationMs: 0,
+        trackId: null,
+        rank: i + 1
+      }));
+
+      this.historyData = artistRows;
+      this.filteredData = artistRows;
+      this.updateUI();
+
+      // Also render the dedicated doughnut chart with real artist data
       this.renderTopArtistsChart(data.items);
+      this.setButtonLoading('load-top-artists-btn', false);
     } catch (err) {
       console.error('Failed to load top artists:', err);
+      this.showError('load-top-artists-btn', 'Failed to load');
     }
   }
 
@@ -132,7 +203,6 @@ class DataManager {
       const result = await api.uploadHistoryFiles(files);
       if (result.success) {
         status.textContent = `Loaded ${result.count} records`;
-        // Normalize Spotify export format
         this.historyData = this.normalizeUploadedData(result.data);
         this.filteredData = [...this.historyData];
         this.updateUI();
@@ -147,7 +217,6 @@ class DataManager {
 
   normalizeUploadedData(data) {
     return data.map(item => {
-      // Handle both extended and standard Spotify export formats
       return {
         trackName: item.master_metadata_track_name || item.trackName || item.track_name || 'Unknown',
         artistName: item.master_metadata_album_artist_name || item.artistName || item.artist_name || 'Unknown',
@@ -175,7 +244,6 @@ class DataManager {
       filtered = filtered.filter(t => t.playedAt && t.playedAt <= endDate + 'T23:59:59');
     }
 
-    // Group by track for min plays filter
     if (minPlays > 1) {
       const counts = {};
       filtered.forEach(t => {
@@ -197,6 +265,7 @@ class DataManager {
   updateUI() {
     this.updateSummary();
     this.updateTable();
+    this.clearAllCharts();
     this.updateCharts();
   }
 
@@ -205,20 +274,24 @@ class DataManager {
     const uniqueArtists = new Set(data.map(t => t.artistName));
     const totalMinutes = Math.round(data.reduce((sum, t) => sum + (t.durationMs || 0), 0) / 60000);
 
-    // Top genre (approximate from artist names - would need API for real genres)
     const artistCounts = {};
     data.forEach(t => { artistCounts[t.artistName] = (artistCounts[t.artistName] || 0) + 1; });
     const topArtist = Object.entries(artistCounts).sort((a, b) => b[1] - a[1])[0];
 
     document.getElementById('total-tracks').textContent = data.length;
     document.getElementById('unique-artists').textContent = uniqueArtists.size;
-    document.getElementById('total-minutes').textContent = totalMinutes.toLocaleString();
+    document.getElementById('total-minutes').textContent = totalMinutes > 0 ? totalMinutes.toLocaleString() : '--';
     document.getElementById('top-genre').textContent = topArtist ? topArtist[0].split(',')[0] : '--';
   }
 
   updateTable() {
     const tbody = document.getElementById('history-tbody');
     if (!tbody) return;
+
+    if (!this.filteredData.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:2rem">No data loaded</td></tr>';
+      return;
+    }
 
     const rows = this.filteredData.slice(0, 200).map(t => {
       const duration = t.durationMs ? `${Math.floor(t.durationMs / 60000)}:${String(Math.floor((t.durationMs % 60000) / 1000)).padStart(2, '0')}` : '--';
@@ -235,18 +308,54 @@ class DataManager {
     tbody.innerHTML = rows;
   }
 
+  clearAllCharts() {
+    for (const [id, chart] of Object.entries(this.charts)) {
+      chart.destroy();
+      delete this.charts[id];
+    }
+  }
+
   updateCharts() {
-    this.renderTimelineChart();
+    const hasTimestamps = this.filteredData.some(t => t.playedAt);
+
+    // Always render these — they work with any data
     this.renderTopTracksChart();
     this.renderTopArtistsChartFromData();
-    this.renderByHourChart();
+
+    // These need timestamps — show a message if no timestamps available
+    if (hasTimestamps) {
+      this.renderTimelineChart();
+      this.renderByHourChart();
+    } else {
+      this.renderEmptyChart('chart-timeline', 'No timestamp data (use "Load Recent Tracks" or upload JSON)');
+      this.renderEmptyChart('chart-by-hour', 'No timestamp data (use "Load Recent Tracks" or upload JSON)');
+    }
+  }
+
+  renderEmptyChart(canvasId, message) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+      delete this.charts[canvasId];
+    }
+
+    // Draw a message on the canvas
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = 200;
+    ctx.fillStyle = '#a0a0b0';
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, canvas.width / 2, 100);
   }
 
   renderTimelineChart() {
     const data = this.filteredData.filter(t => t.playedAt);
     if (!data.length) return;
 
-    // Group by date
     const byDate = {};
     data.forEach(t => {
       const date = t.playedAt.split('T')[0];
@@ -270,6 +379,8 @@ class DataManager {
   }
 
   renderTopTracksChart() {
+    if (!this.filteredData.length) return;
+
     const counts = {};
     this.filteredData.forEach(t => {
       const key = t.trackName;
@@ -279,7 +390,7 @@ class DataManager {
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
     this.renderChart('chart-top-tracks', 'bar', {
-      labels: top.map(t => t[0].slice(0, 25)),
+      labels: top.map(t => t[0].length > 25 ? t[0].slice(0, 23) + '...' : t[0]),
       datasets: [{
         label: 'Play Count',
         data: top.map(t => t[1]),
@@ -291,6 +402,8 @@ class DataManager {
   }
 
   renderTopArtistsChartFromData() {
+    if (!this.filteredData.length) return;
+
     const counts = {};
     this.filteredData.forEach(t => {
       counts[t.artistName] = (counts[t.artistName] || 0) + 1;
@@ -331,14 +444,14 @@ class DataManager {
       hours[hour]++;
     });
 
+    const maxHour = Math.max(...hours);
     this.renderChart('chart-by-hour', 'bar', {
       labels: hours.map((_, i) => `${i}:00`),
       datasets: [{
         label: 'Tracks',
         data: hours,
-        backgroundColor: hours.map((v, i) => {
-          const max = Math.max(...hours);
-          const intensity = v / max;
+        backgroundColor: hours.map(v => {
+          const intensity = maxHour > 0 ? v / maxHour : 0;
           return `rgba(29,185,84,${0.2 + intensity * 0.6})`;
         }),
         borderRadius: 4
