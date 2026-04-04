@@ -102,6 +102,22 @@
   content: " ~";
 }
 
+/* Sync flash animation on the controls panel */
+.controls-panel.sync-flash {
+  animation: syncFlash 0.6s ease-out;
+}
+
+@keyframes syncFlash {
+  0% { background: rgba(29, 185, 84, 0.25); }
+  100% { background: var(--bg-secondary); }
+}
+
+/* Animate control values when they change from sync */
+.controls-panel.sync-flash select,
+.controls-panel.sync-flash input[type="range"] {
+  transition: all 0.3s ease-out;
+}
+
 .control-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

@@ -538,11 +538,23 @@ class Visualizer {
     btn?.classList.toggle('active', this.syncActive);
 
     if (!this.syncActive) {
-      // Restore defaults when turning off
       this.resetControlsToDefaults();
     } else if (this.trackFeatures) {
-      // Re-apply current track features
       this.applyTrackFeatures(this.trackFeatures);
+    } else {
+      // No track features yet — apply demo features so user sees controls move
+      this.applyTrackFeatures({
+        tempo: 128, energy: 0.75, danceability: 0.65,
+        valence: 0.6, acousticness: 0.1, instrumentalness: 0.05,
+        speechiness: 0.05, liveness: 0.15
+      });
+    }
+
+    // Flash the controls panel to signal the change
+    const panel = document.getElementById('viz-controls');
+    if (panel) {
+      panel.classList.add('sync-flash');
+      setTimeout(() => panel.classList.remove('sync-flash'), 600);
     }
   }
 
