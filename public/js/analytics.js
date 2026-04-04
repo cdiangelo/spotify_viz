@@ -249,15 +249,62 @@ class AnalyticsManager {
   // ─── Playlist Generation ───────────────────────────────────────────────────
 
   async generatePlaylist() {
+    const btn = document.getElementById('generate-playlist-btn');
     const seedType = document.getElementById('playlist-seed')?.value || 'top-tracks';
     const targetEnergy = (document.getElementById('target-energy')?.value || 50) / 100;
     const targetValence = (document.getElementById('target-valence')?.value || 50) / 100;
     const targetDance = (document.getElementById('target-dance')?.value || 50) / 100;
     const count = parseInt(document.getElementById('playlist-count')?.value) || 20;
 
+    btn.textContent = 'Generating...';
+    btn.disabled = true;
+
+    try {
+      // First try the recommendations endpoint
+      let tracks = await this.tryRecommendations(seedType, targetEnergy, targetValence, targetDance, count);
+
+      // If recommendations failed (deprecated/unavailable), fall back to
+      // filtering the user's own top tracks by audio features
+      if (!tracks || !tracks.length) {
+        tracks = await this.fallbackGenerateFromTopTracks(targetEnergy, targetValence, targetDance, count);
+      }
+
+      if (!tracks || !tracks.length) {
+        btn.textContent = 'No tracks found — try different settings';
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Generate Playlist'; }, 3000);
+        return;
+      }
+
+      // Get audio features for the generated tracks
+      const trackIds = tracks.map(t => t.id).filter(Boolean);
+      let featureMap = {};
+      if (trackIds.length) {
+        try {
+          const features = await api.getAudioFeatures(trackIds);
+          features.forEach(f => { if (f) featureMap[f.id] = f; });
+        } catch (e) {
+          // Features are optional for display
+        }
+      }
+
+      this.generatedTracks = tracks;
+      this.renderPlaylistPreview(tracks, featureMap);
+
+      document.getElementById('save-playlist-btn')?.classList.remove('hidden');
+      btn.textContent = 'Generate Playlist';
+      btn.disabled = false;
+    } catch (err) {
+      console.error('Playlist generation failed:', err);
+      btn.textContent = 'Error — try again';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Generate Playlist'; }, 3000);
+    }
+  }
+
+  async tryRecommendations(seedType, targetEnergy, targetValence, targetDance, count) {
     try {
       let seedTracks = [];
-      let seedArtists = [];
 
       switch (seedType) {
         case 'top-tracks': {
@@ -278,10 +325,7 @@ class AnalyticsManager {
         }
       }
 
-      if (!seedTracks.length) {
-        console.error('No seed tracks found');
-        return;
-      }
+      if (!seedTracks.length) return null;
 
       const params = {
         seed_tracks: seedTracks.join(','),
@@ -292,21 +336,76 @@ class AnalyticsManager {
       };
 
       const recs = await api.getRecommendations(params);
-      if (!recs.tracks) return;
-
-      // Get audio features for the recommended tracks
-      const trackIds = recs.tracks.map(t => t.id);
-      const features = await api.getAudioFeatures(trackIds);
-      const featureMap = {};
-      features.forEach(f => { if (f) featureMap[f.id] = f; });
-
-      this.generatedTracks = recs.tracks;
-      this.renderPlaylistPreview(recs.tracks, featureMap);
-
-      document.getElementById('save-playlist-btn')?.classList.remove('hidden');
+      if (recs.tracks && recs.tracks.length) {
+        return recs.tracks;
+      }
+      return null;
     } catch (err) {
-      console.error('Playlist generation failed:', err);
+      console.log('Recommendations endpoint unavailable, using fallback');
+      return null;
     }
+  }
+
+  async fallbackGenerateFromTopTracks(targetEnergy, targetValence, targetDance, count) {
+    // Pull a large pool from all three time ranges
+    const [short, medium, long] = await Promise.all([
+      api.getTopTracks('short_term', 50).catch(() => ({ items: [] })),
+      api.getTopTracks('medium_term', 50).catch(() => ({ items: [] })),
+      api.getTopTracks('long_term', 50).catch(() => ({ items: [] }))
+    ]);
+
+    // Deduplicate by track ID
+    const seen = new Set();
+    const pool = [];
+    for (const list of [short.items, medium.items, long.items]) {
+      if (!list) continue;
+      for (const t of list) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          pool.push(t);
+        }
+      }
+    }
+
+    if (!pool.length) return null;
+
+    // Get audio features for all tracks in the pool
+    const ids = pool.map(t => t.id);
+    let features;
+    try {
+      features = await api.getAudioFeatures(ids);
+    } catch (e) {
+      // If features unavailable, just return a shuffled subset
+      return this.shuffle(pool).slice(0, count);
+    }
+
+    const featureMap = {};
+    features.forEach(f => { if (f) featureMap[f.id] = f; });
+
+    // Score each track by distance to target features
+    const scored = pool.map(t => {
+      const f = featureMap[t.id];
+      if (!f) return { track: t, score: 999 };
+      const dist = Math.sqrt(
+        Math.pow((f.energy || 0) - targetEnergy, 2) +
+        Math.pow((f.valence || 0) - targetValence, 2) +
+        Math.pow((f.danceability || 0) - targetDance, 2)
+      );
+      return { track: t, score: dist };
+    });
+
+    // Sort by closest match, take top N
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, count).map(s => s.track);
+  }
+
+  shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
   }
 
   renderPlaylistPreview(tracks, featureMap) {
