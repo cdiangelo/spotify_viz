@@ -30,7 +30,7 @@ class Visualizer {
       colorScheme: 'spotify',
       geoOverlay: 'none',
       overlaySize: 80,
-      overlayOverlap: 0,
+      overlayOverlap: 0.75,
       overlayOpacity: 0.4,
       bounceIntensity: 0.6,
       waveFreq: 8,
@@ -631,7 +631,7 @@ class Visualizer {
     this.settings.colorScheme = 'spotify';
     this.settings.geoOverlay = 'none';
     this.settings.overlaySize = 80;
-    this.settings.overlayOverlap = 0;
+    this.settings.overlayOverlap = 0.75;
     this.settings.overlayOpacity = 0.4;
     this.settings.bounceIntensity = 0.6;
     this.settings.waveFreq = 8;
