@@ -560,11 +560,9 @@ class Visualizer {
     // High energy + dance → flash on, else off
     this.settings.colorFlash = energy > 0.5 && dance > 0.4;
 
-    // Energy → viz mode preference
-    if (energy > 0.75) this.settings.vizMode = 'particles';
-    else if (dance > 0.7) this.settings.vizMode = 'circular';
-    else if (energy > 0.4) this.settings.vizMode = 'bars';
-    else this.settings.vizMode = 'wave';
+    // NOTE: vizMode is never changed by sync — the user controls which
+    // visualization mode they want and all modes receive the same
+    // song-based guidance (bounce, wave, color, overlays, BPM pulse).
 
     // Update the UI controls to reflect the new values
     this.syncControlsToUI();
@@ -580,7 +578,6 @@ class Visualizer {
     this.setControl('wave-freq', s.waveFreq);
     this.setControl('wave-size', s.waveSize);
     this.setControl('color-flash', s.colorFlash);
-    this.setControl('viz-mode', s.vizMode);
   }
 
   setControl(id, value) {
@@ -599,7 +596,7 @@ class Visualizer {
     this.settings.waveFreq = 8;
     this.settings.waveSize = 80;
     this.settings.colorFlash = true;
-    this.settings.vizMode = 'bars';
+    // vizMode is NOT reset — user's choice is always preserved
     this.bpm = 120;
     this.beatInterval = 500;
     this.syncControlsToUI();
