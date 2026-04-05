@@ -6,6 +6,12 @@ class DataManager {
     this.filteredData = [];
     this.charts = {};
     this.lastLoadAction = null;
+
+    // Separate caches for API and uploaded data
+    this.apiData = [];
+    this.uploadData = [];
+    this.activeSource = 'api';
+
     this.chartDefaults = {
       responsive: true,
       maintainAspectRatio: false,
@@ -24,14 +30,27 @@ class DataManager {
   }
 
   bindEvents() {
-    // Source toggle
+    // Source toggle — restore cached data when switching
     document.querySelectorAll('.source-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const source = btn.dataset.source;
+        this.activeSource = source;
         document.getElementById('api-source').classList.toggle('hidden', source !== 'api');
         document.getElementById('upload-source').classList.toggle('hidden', source !== 'upload');
+
+        // Restore the cached data for this source
+        if (source === 'api' && this.apiData.length) {
+          this.historyData = this.apiData;
+          this.filteredData = [...this.apiData];
+          this.updateUI();
+        } else if (source === 'upload' && this.uploadData.length) {
+          this.historyData = this.uploadData;
+          this.filteredData = [...this.uploadData];
+          this.updateUI();
+          this.updateUploadStatus();
+        }
       });
     });
 
@@ -62,6 +81,16 @@ class DataManager {
     });
     fileInput?.addEventListener('change', () => {
       if (fileInput.files.length) this.handleUpload(fileInput.files);
+    });
+
+    // Reload uploaded data button
+    document.getElementById('reload-upload-btn')?.addEventListener('click', () => {
+      if (this.uploadData.length) {
+        this.historyData = this.uploadData;
+        this.filteredData = [...this.uploadData];
+        this.updateUI();
+        this.updateUploadStatus();
+      }
     });
 
     // Filters
@@ -115,6 +144,7 @@ class DataManager {
         trackId: item.track.id
       }));
 
+      this.apiData = tracks;
       this.historyData = tracks;
       this.filteredData = tracks;
       this.updateUI();
@@ -147,6 +177,7 @@ class DataManager {
         rank: i + 1
       }));
 
+      this.apiData = tracks;
       this.historyData = tracks;
       this.filteredData = tracks;
       this.updateUI();
@@ -169,7 +200,6 @@ class DataManager {
         return;
       }
 
-      // Convert artists into track-like rows so summary/table/charts all work
       const artistRows = data.items.map((artist, i) => ({
         trackName: artist.genres?.slice(0, 2).join(', ') || '--',
         artistName: artist.name,
@@ -180,11 +210,11 @@ class DataManager {
         rank: i + 1
       }));
 
+      this.apiData = artistRows;
       this.historyData = artistRows;
       this.filteredData = artistRows;
       this.updateUI();
 
-      // Also render the dedicated doughnut chart with real artist data
       this.renderTopArtistsChart(data.items);
       this.setButtonLoading('load-top-artists-btn', false);
     } catch (err) {
@@ -202,10 +232,11 @@ class DataManager {
     try {
       const result = await api.uploadHistoryFiles(files);
       if (result.success) {
-        status.textContent = `Loaded ${result.count} records`;
-        this.historyData = this.normalizeUploadedData(result.data);
-        this.filteredData = [...this.historyData];
+        this.uploadData = this.normalizeUploadedData(result.data);
+        this.historyData = this.uploadData;
+        this.filteredData = [...this.uploadData];
         this.updateUI();
+        this.updateUploadStatus();
       } else {
         status.textContent = `Error: ${result.error}`;
       }
@@ -226,6 +257,17 @@ class DataManager {
         trackId: item.spotify_track_uri?.split(':').pop() || null
       };
     }).filter(item => item.trackName !== 'Unknown' || item.artistName !== 'Unknown');
+  }
+
+  updateUploadStatus() {
+    const status = document.getElementById('upload-status');
+    const reloadBtn = document.getElementById('reload-upload-btn');
+    if (status) {
+      status.textContent = `Loaded ${this.uploadData.length} records`;
+    }
+    if (reloadBtn) {
+      reloadBtn.classList.toggle('hidden', !this.uploadData.length);
+    }
   }
 
   // ─── Filters ───────────────────────────────────────────────────────────────
