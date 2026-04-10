@@ -72,8 +72,7 @@
       </div>
       <div id="viz-controls" class="controls-panel">
         <div class="controls-header">
-          <h3>Visualizer Controls</h3>
-          <button id="sync-music-btn" class="btn-sync" title="Auto-tune visuals to match the current song's rhythm, energy, and mood">Sync to Music</button>
+          <h3>Visualizer Controls <span class="sync-indicator">◉ Auto-synced to music</span></h3>
         </div>
         <div class="control-grid">
           <div class="control-group">
@@ -131,10 +130,17 @@
           <div class="control-group">
             <label>Visualization Mode</label>
             <select id="viz-mode">
-              <option value="bars">Bars</option>
-              <option value="wave">Waveform</option>
-              <option value="circular">Circular</option>
-              <option value="particles">Particles</option>
+              <optgroup label="Audio Reactive">
+                <option value="bars">Bars</option>
+                <option value="wave">Waveform</option>
+                <option value="circular">Circular</option>
+                <option value="particles">Particles</option>
+              </optgroup>
+              <optgroup label="Standalone Patterns">
+                <option value="solitaire">Solitaire Celebration</option>
+                <option value="dvd">DVD Logo Bounce</option>
+                <option value="vhs">VHS Landmarks</option>
+              </optgroup>
             </select>
           </div>
         </div>

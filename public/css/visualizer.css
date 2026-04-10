@@ -70,52 +70,19 @@
   color: var(--text-secondary);
 }
 
-.btn-sync {
-  padding: 0.4rem 1rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: rgba(255,255,255,0.06);
-  border: 1px solid var(--border);
-  border-radius: 50px;
-  cursor: pointer;
-  transition: all 0.25s;
-}
-
-.btn-sync:hover {
-  border-color: var(--accent);
+.sync-indicator {
+  display: inline-block;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--accent);
+  letter-spacing: 0.02em;
+  animation: syncPulse 2s ease-in-out infinite;
 }
 
-.btn-sync.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #000;
-  box-shadow: 0 0 12px rgba(29, 185, 84, 0.4);
-}
-
-.btn-sync.active::before {
-  content: "~ ";
-}
-
-.btn-sync.active::after {
-  content: " ~";
-}
-
-/* Sync flash animation on the controls panel */
-.controls-panel.sync-flash {
-  animation: syncFlash 0.6s ease-out;
-}
-
-@keyframes syncFlash {
-  0% { background: rgba(29, 185, 84, 0.25); }
-  100% { background: var(--bg-secondary); }
-}
-
-/* Animate control values when they change from sync */
-.controls-panel.sync-flash select,
-.controls-panel.sync-flash input[type="range"] {
-  transition: all 0.3s ease-out;
+@keyframes syncPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .control-grid {
