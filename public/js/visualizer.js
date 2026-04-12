@@ -867,52 +867,6 @@ class Visualizer {
 
     const ctx = this.ctx;
 
-    // Warm sepia tint over video (thickens during jitter / channel switch)
-    ctx.fillStyle = `rgba(50, 25, 8, ${0.12 + state.jitter * 0.18})`;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    // Scan lines — density tied to energy
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    for (let y = 0; y < this.height; y += 3) {
-      ctx.fillRect(0, y, this.width, 1);
-    }
-
-    // Moving tracking band — speed = audio reactive (set above)
-    const tY = state.scanY;
-    const grad = ctx.createLinearGradient(0, tY - 30, 0, tY + 30);
-    grad.addColorStop(0, 'rgba(255,255,255,0)');
-    grad.addColorStop(0.5, `rgba(255,255,255,${0.07 + energy * 0.12})`);
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, tY - 30, this.width, 60);
-
-    // Jitter bars on channel switch
-    if (state.jitter > 0.15) {
-      const jCount = Math.floor(state.jitter * 10);
-      for (let i = 0; i < jCount; i++) {
-        const jy = Math.random() * this.height;
-        const jh = 1 + Math.random() * 6;
-        const jShift = (Math.random() - 0.5) * state.jitter * 40;
-        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.22})`;
-        ctx.fillRect(jShift, jy, this.width, jh);
-      }
-    }
-
-    // Glitch bars on bass hit
-    if (bassEnergy > 0.55) {
-      const glitchCount = Math.floor(bassEnergy * 6);
-      for (let i = 0; i < glitchCount; i++) {
-        const gy = Math.random() * this.height;
-        const gh = 2 + Math.random() * 10;
-        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.28})`;
-        ctx.fillRect(0, gy, this.width, gh);
-      }
-    }
-
-    // Subtle warm noise grain
-    ctx.fillStyle = 'rgba(255, 210, 160, 0.025)';
-    ctx.fillRect(0, 0, this.width, this.height);
-
     // VHS title bar
     ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
     ctx.fillRect(0, this.height - 60, this.width, 60);
