@@ -46,6 +46,7 @@ class Visualizer {
     this.foodItems = [];
     this.paperItems = [];
     this.runwayItems = [];
+    this._ytFrame = null;
 
     // Historical landmarks drawn procedurally — each is a drawing function
     this.landmarks = [
@@ -216,9 +217,15 @@ class Visualizer {
     const energy = avg / 255;
     const bassEnergy = Array.from(freqData).slice(0, 8).reduce((a, b) => a + b, 0) / (8 * 255);
 
-    // Clear
-    this.ctx.fillStyle = '#000';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    // Clear — in VHS mode canvas is transparent so YouTube iframe shows through
+    if (this.settings.vizMode === 'vhs') {
+      this.ctx.clearRect(0, 0, this.width, this.height);
+      this._ensureYouTubeFrame();
+    } else {
+      this._removeYouTubeFrame();
+      this.ctx.fillStyle = '#000';
+      this.ctx.fillRect(0, 0, this.width, this.height);
+    }
 
     // Color flash background
     if (this.settings.colorFlash && bassEnergy > 0.5) {
@@ -828,12 +835,12 @@ class Visualizer {
     ctx.restore();
   }
 
-  // VHS-style transitioning historical landmarks
+  // VHS-style overlay over live YouTube video background
   drawVHS(data, energy, bassEnergy) {
     const now = performance.now();
     const state = this.vhsState;
 
-    // Switch slides on a musical interval (every ~8 beats, or on big bass hit)
+    // "Channel switch" on a musical interval or big bass hit — updates title text
     const slideInterval = Math.max(3000, 60000 / this.bpm * 8);
     const elapsed = now - state.lastSlide;
     if (elapsed > slideInterval || (bassEnergy > 0.85 && elapsed > 1500)) {
@@ -843,102 +850,70 @@ class Visualizer {
       state.jitter = 1;
     }
 
-    // Transition progress (0 = just switched, 1 = fully stable)
     state.transitionProgress = Math.min(1, state.transitionProgress + 0.02);
     state.jitter *= 0.96;
-    state.scanY = (state.scanY + 2 + energy * 4) % this.height;
+    // scanY speed is audio-driven: faster BPM + energy = faster scan
+    state.scanY = (state.scanY + 1.5 + (this.bpm / 120) * 1.5 + energy * 3.5) % this.height;
 
     const ctx = this.ctx;
-    const landmark = this.landmarks[state.slideIdx];
 
-    // Dark warm background (old tape look)
-    ctx.fillStyle = '#0a0806';
+    // Warm sepia tint over video (thickens during jitter / channel switch)
+    ctx.fillStyle = `rgba(50, 25, 8, ${0.12 + state.jitter * 0.18})`;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Draw landmark — wobble with jitter/energy
-    ctx.save();
-    const wobbleX = (Math.random() - 0.5) * state.jitter * 20 + (Math.random() - 0.5) * bassEnergy * 6;
-    const wobbleY = (Math.random() - 0.5) * state.jitter * 20 + (Math.random() - 0.5) * bassEnergy * 6;
-    ctx.translate(wobbleX, wobbleY);
-
-    // Transition reveal: draw with progressively growing clip
-    const trans = state.transitionProgress;
-    if (trans < 1) {
-      ctx.beginPath();
-      ctx.rect(0, this.height * (1 - trans), this.width, this.height * trans);
-      ctx.clip();
-    }
-
-    // Warm sepia tint
-    ctx.fillStyle = 'rgba(60, 40, 20, 0.4)';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    // Draw the landmark in chromatic aberration style
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.translate(-3, 0);
-    ctx.strokeStyle = 'rgba(255, 50, 50, 0.6)';
-    ctx.lineWidth = 2 + bassEnergy * 2;
-    landmark.draw(ctx, this.width, this.height);
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.translate(3, 0);
-    ctx.strokeStyle = 'rgba(50, 200, 255, 0.6)';
-    ctx.lineWidth = 2 + bassEnergy * 2;
-    landmark.draw(ctx, this.width, this.height);
-    ctx.restore();
-
-    ctx.strokeStyle = 'rgba(255, 230, 180, 0.9)';
-    ctx.lineWidth = 2 + energy * 2;
-    landmark.draw(ctx, this.width, this.height);
-
-    ctx.restore();
-
-    // Scan lines
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    // Scan lines — density tied to energy
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
     for (let y = 0; y < this.height; y += 3) {
       ctx.fillRect(0, y, this.width, 1);
     }
 
-    // Moving tracking line
+    // Moving tracking band — speed = audio reactive (set above)
     const tY = state.scanY;
     const grad = ctx.createLinearGradient(0, tY - 30, 0, tY + 30);
     grad.addColorStop(0, 'rgba(255,255,255,0)');
-    grad.addColorStop(0.5, `rgba(255,255,255,${0.1 + energy * 0.15})`);
+    grad.addColorStop(0.5, `rgba(255,255,255,${0.07 + energy * 0.12})`);
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, tY - 30, this.width, 60);
 
-    // Random glitch bars on bass
-    if (bassEnergy > 0.6) {
-      const glitchCount = Math.floor(bassEnergy * 5);
+    // Jitter bars on channel switch
+    if (state.jitter > 0.15) {
+      const jCount = Math.floor(state.jitter * 10);
+      for (let i = 0; i < jCount; i++) {
+        const jy = Math.random() * this.height;
+        const jh = 1 + Math.random() * 6;
+        const jShift = (Math.random() - 0.5) * state.jitter * 40;
+        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.22})`;
+        ctx.fillRect(jShift, jy, this.width, jh);
+      }
+    }
+
+    // Glitch bars on bass hit
+    if (bassEnergy > 0.55) {
+      const glitchCount = Math.floor(bassEnergy * 6);
       for (let i = 0; i < glitchCount; i++) {
         const gy = Math.random() * this.height;
-        const gh = 2 + Math.random() * 8;
-        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.3})`;
+        const gh = 2 + Math.random() * 10;
+        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.28})`;
         ctx.fillRect(0, gy, this.width, gh);
       }
     }
 
-    // Noise
-    const noiseImg = ctx.getImageData(0, 0, Math.min(200, this.width), Math.min(200, this.height));
-    // Skip noise pixel manipulation for perf — use a semi-transparent overlay instead
-    ctx.fillStyle = 'rgba(255, 220, 180, 0.03)';
+    // Subtle warm noise grain
+    ctx.fillStyle = 'rgba(255, 210, 160, 0.025)';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Title bar (VHS-style overlay text)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    // VHS title bar
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
     ctx.fillRect(0, this.height - 60, this.width, 60);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 20px monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`► PLAY   ${landmark.name.toUpperCase()}`, 20, this.height - 40);
+    ctx.fillText(`► PLAY   CH ${String(state.slideIdx + 1).padStart(2, '0')}`, 20, this.height - 40);
     ctx.font = '14px monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.fillText(landmark.year, 20, this.height - 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText('LIVE', 20, this.height - 18);
 
     // REC indicator blinking
     if (Math.floor(now / 500) % 2 === 0) {
@@ -955,223 +930,363 @@ class Visualizer {
 
   // ─── New Themed Wave Modes ─────────────────────────────────────────────────
 
-  // Helper: draw an emoji item with optional bass distortion
-  _drawEmojiItem(item, colors, bassEnergy) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.translate(item.x, item.y);
-    ctx.rotate(item.rot);
-    ctx.globalAlpha = Math.max(0, item.life);
-    if (item.distortion > 0.3) {
-      ctx.shadowColor = colors[Math.floor(Math.random() * colors.length)];
-      ctx.shadowBlur = item.distortion * 18;
-    }
-    ctx.font = `${item.size * 2}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const dx = item.distortion > 0.5 ? (Math.random() - 0.5) * item.distortion * 8 : 0;
-    const dy = item.distortion > 0.5 ? (Math.random() - 0.5) * item.distortion * 8 : 0;
-    ctx.fillText(item.emoji, dx, dy);
-    ctx.shadowBlur = 0;
-    ctx.restore();
-  }
-
-  // Toy Avalanche — normal downward gravity, items pile and bounce, speed from BPM
+  // Toy Avalanche — dense mass of plastic bouncy balls, BPM-driven gravity
   drawToys(data, energy, bassEnergy) {
-    const colors = this.colorSchemes[this.settings.colorScheme];
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    const speedMult = 0.5 + (this.bpm / 120) * 0.9 + energy * 1.0;
-    const toyEmojis = ['🦆', '⚽', '🎾', '🪀', '🎲', '🎯', '🎳', '🪃', '🎠', '🏀'];
+    // Speed: base 1.5x, scales hard with BPM and energy
+    const speedMult = 1.5 + (this.bpm / 120) * 1.6 + energy * 2.2;
+    const ballColors = [
+      { m: '#ff2020', l: '#ff9090', d: '#7a0000' },
+      { m: '#ff8800', l: '#ffd090', d: '#7a4000' },
+      { m: '#ffe000', l: '#fff5aa', d: '#7a6c00' },
+      { m: '#20ff50', l: '#90ffb0', d: '#006b20' },
+      { m: '#2055ff', l: '#90bbff', d: '#002288' },
+      { m: '#cc20ff', l: '#ee90ff', d: '#550088' },
+      { m: '#ff2090', l: '#ff90cc', d: '#7a0044' },
+      { m: '#00ddff', l: '#88f5ff', d: '#006f7a' },
+    ];
 
-    const spawnRate = 0.12 + energy * 0.45 + beatPulse * 0.7;
-    if (Math.random() < spawnRate && this.toyItems.length < 220) {
+    // Burst on beat + continuous flood; long life = dense pileup
+    const burstCount = Math.floor(beatPulse * 8);
+    const bgSpawn = Math.random() < (0.75 + energy * 0.8) ? 1 : 0;
+    for (let s = 0; s < burstCount + bgSpawn && this.toyItems.length < 680; s++) {
       const side = Math.floor(Math.random() * 3);
       let x, y, vx, vy;
-      if (side === 0) { x = Math.random() * this.width; y = -50; vx = (Math.random() - 0.5) * 4; vy = 1 + Math.random() * 2; }
-      else if (side === 1) { x = -50; y = Math.random() * this.height * 0.6; vx = 2 + Math.random() * 3; vy = (Math.random() - 0.5) * 3; }
-      else { x = this.width + 50; y = Math.random() * this.height * 0.6; vx = -2 - Math.random() * 3; vy = (Math.random() - 0.5) * 3; }
-      this.toyItems.push({
-        x, y, vx, vy,
-        rot: Math.random() * Math.PI * 2,
-        vrot: (Math.random() - 0.5) * 0.3,
-        size: 18 + energy * 22 + Math.random() * 10,
-        emoji: toyEmojis[Math.floor(Math.random() * toyEmojis.length)],
-        life: 1, bounces: 0, distortion: 0
-      });
+      if (side === 0) { x = Math.random() * this.width; y = -40; vx = (Math.random()-0.5)*10; vy = 3+Math.random()*7; }
+      else if (side === 1) { x = -40; y = Math.random()*this.height*0.7; vx = 5+Math.random()*9; vy = (Math.random()-0.5)*9; }
+      else { x = this.width+40; y = Math.random()*this.height*0.7; vx = -(5+Math.random()*9); vy = (Math.random()-0.5)*9; }
+      const c = ballColors[Math.floor(Math.random() * ballColors.length)];
+      this.toyItems.push({ x, y, vx, vy, r: 10+energy*20+Math.random()*16, color: c, life: 1, bounces: 0, distortion: 0 });
     }
 
-    // Gravity is BPM-driven — faster song = more excitement / stronger pull
-    const gravity = (0.18 + (this.bpm / 120) * 0.14 + energy * 0.25) * speedMult * 0.5;
+    // Gravity: BPM raises the pull so fast songs create a heavier avalanche
+    const gravity = 0.35 + (this.bpm / 120) * 0.35 + energy * 0.55;
 
     for (let i = this.toyItems.length - 1; i >= 0; i--) {
       const item = this.toyItems[i];
       item.vy += gravity;
-      item.x += item.vx * speedMult;
-      item.y += item.vy;
-      item.rot += item.vrot * speedMult;
-      item.distortion += bassEnergy * 0.04 + 0.001;
+      item.x += item.vx * speedMult * 0.35;
+      item.y += item.vy * speedMult * 0.35;
+      item.distortion += bassEnergy * 0.05;
 
-      if (item.y + item.size > this.height) {
-        item.y = this.height - item.size;
-        item.vy *= -(0.5 + energy * 0.25);
-        item.vx *= 0.82;
+      if (item.y + item.r > this.height) {
+        item.y = this.height - item.r;
+        item.vy *= -(0.52 + energy * 0.22 + bassEnergy * 0.18);
+        item.vx *= 0.86;
         item.bounces++;
-        item.distortion += 0.12;
-        if (item.bounces > 4) item.life -= 0.12;
+        item.distortion += 0.18;
+        if (item.bounces > 5) item.life -= 0.18;
       }
-      if (item.x < -item.size) item.x = this.width + item.size;
-      if (item.x > this.width + item.size) item.x = -item.size;
+      if (item.x < -item.r) item.x = this.width + item.r;
+      if (item.x > this.width + item.r) item.x = -item.r;
 
-      item.life -= 0.003;
+      item.life -= 0.001;
       if (item.life <= 0) { this.toyItems.splice(i, 1); continue; }
-      this._drawEmojiItem(item, colors, bassEnergy);
+      this._drawPlasticBall(item.x, item.y, item.r, item.color, item.distortion, bassEnergy, item.life);
     }
   }
 
-  // Food Storm — sideways gravity that shifts with the music, items wrap around screen
-  drawFood(data, energy, bassEnergy) {
-    const colors = this.colorSchemes[this.settings.colorScheme];
-    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    // Gravity angle drifts with simPhase so the storm direction changes with music
-    const gravityAngle = Math.sin(this.simPhase * 0.25) * 0.9;
-    const gStrength = 0.12 + energy * 0.22 + (this.bpm / 120) * 0.08;
-    const gx = Math.sin(gravityAngle) * gStrength;
-    const gy = Math.abs(Math.cos(gravityAngle)) * gStrength * 0.4 + 0.04; // always some downward component
-    const speedMult = 0.6 + (this.bpm / 120) * 0.75 + energy * 0.9;
-    const foodEmojis = ['🍩', '🍕', '🍎', '🍔', '🌮', '🍟', '🍦', '🍰', '🥨', '🥐', '🍣', '🍓'];
+  _drawPlasticBall(x, y, r, color, distortion, bassEnergy, alpha) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
 
-    const spawnRate = 0.13 + energy * 0.38 + beatPulse * 0.5;
-    if (Math.random() < spawnRate && this.foodItems.length < 200) {
+    // Chromatic aberration on bass
+    if (distortion > 0.35 && bassEnergy > 0.4) {
+      ctx.save(); ctx.globalAlpha *= 0.5;
+      ctx.beginPath(); ctx.arc(x - distortion*5, y, r, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,30,30,0.65)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(x + distortion*5, y, r, 0, Math.PI*2); ctx.fillStyle = 'rgba(30,255,255,0.65)'; ctx.fill();
+      ctx.restore();
+    }
+    // Drop shadow
+    ctx.beginPath();
+    ctx.ellipse(x+r*0.12, y+r*0.82, r*0.7, r*0.2, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fill();
+    // Sphere radial gradient
+    const grad = ctx.createRadialGradient(x-r*0.38, y-r*0.38, r*0.03, x+r*0.1, y+r*0.1, r*1.05);
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.18, color.l);
+    grad.addColorStop(0.5, color.m); grad.addColorStop(0.82, color.d); grad.addColorStop(1, '#000');
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fillStyle = grad; ctx.fill();
+    // Primary specular
+    ctx.beginPath(); ctx.arc(x-r*0.32, y-r*0.32, r*0.23, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.78)'; ctx.fill();
+    // Tiny glint
+    ctx.beginPath(); ctx.arc(x-r*0.14, y-r*0.14, r*0.08, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill();
+    // Glow ring on bass
+    if (bassEnergy > 0.5 && distortion > 0.2) {
+      ctx.beginPath(); ctx.arc(x, y, r*1.3, 0, Math.PI*2);
+      ctx.strokeStyle = color.m; ctx.lineWidth = 2; ctx.globalAlpha *= 0.45; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Food Storm — overflowing donuts with music-driven rotating sideways gravity
+  drawFood(data, energy, bassEnergy) {
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    // Gravity direction slowly rotates with simPhase — the storm shifts over time
+    const gravityAngle = Math.sin(this.simPhase * 0.2) * 0.9;
+    const gStrength = 0.28 + energy * 0.45 + (this.bpm / 120) * 0.18;
+    const gx = Math.sin(gravityAngle) * gStrength;
+    const gy = Math.abs(Math.cos(gravityAngle)) * gStrength * 0.5 + 0.1;
+    const speedMult = 1.1 + (this.bpm / 120) * 1.3 + energy * 1.8;
+    const glazeColors = [
+      { glaze: '#ff82b8', body: '#c4843c' },
+      { glaze: '#6b3a1f', body: '#c4843c' },
+      { glaze: '#f5f5f5', body: '#c4843c' },
+      { glaze: '#ff4422', body: '#c4843c' },
+      { glaze: '#44aaff', body: '#c4843c' },
+      { glaze: '#88ff44', body: '#c4843c' },
+      { glaze: '#ffdd00', body: '#c4843c' },
+      { glaze: '#cc44ff', body: '#c4843c' },
+    ];
+
+    const burstCount = Math.floor(beatPulse * 7);
+    const bgSpawn = Math.random() < (0.7 + energy * 0.85) ? 1 : 0;
+    for (let s = 0; s < burstCount + bgSpawn && this.foodItems.length < 600; s++) {
       const edge = Math.floor(Math.random() * 4);
       let x, y, vx, vy;
-      if (edge === 0) { x = Math.random() * this.width; y = -40; vx = (Math.random() - 0.5) * 5; vy = 1.5; }
-      else if (edge === 1) { x = this.width + 40; y = Math.random() * this.height; vx = -2.5; vy = (Math.random() - 0.5) * 4; }
-      else if (edge === 2) { x = -40; y = Math.random() * this.height; vx = 2.5; vy = (Math.random() - 0.5) * 4; }
-      else { x = Math.random() * this.width; y = this.height + 40; vx = (Math.random() - 0.5) * 5; vy = -2.5; }
-      this.foodItems.push({
-        x, y, vx, vy,
-        rot: Math.random() * Math.PI * 2,
-        vrot: (Math.random() - 0.5) * 0.18,
-        size: 18 + energy * 22 + Math.random() * 12,
-        emoji: foodEmojis[Math.floor(Math.random() * foodEmojis.length)],
-        life: 1, distortion: 0
-      });
+      if (edge === 0) { x = Math.random()*this.width; y = -45; vx = (Math.random()-0.5)*12; vy = 3+Math.random()*6; }
+      else if (edge === 1) { x = this.width+45; y = Math.random()*this.height; vx = -(5+Math.random()*9); vy = (Math.random()-0.5)*9; }
+      else if (edge === 2) { x = -45; y = Math.random()*this.height; vx = 5+Math.random()*9; vy = (Math.random()-0.5)*9; }
+      else { x = Math.random()*this.width; y = this.height+45; vx = (Math.random()-0.5)*12; vy = -(3+Math.random()*6); }
+      const c = glazeColors[Math.floor(Math.random() * glazeColors.length)];
+      this.foodItems.push({ x, y, vx, vy, rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.25, r: 14+energy*22+Math.random()*16, colors: c, life: 1, distortion: 0 });
     }
 
     for (let i = this.foodItems.length - 1; i >= 0; i--) {
       const item = this.foodItems[i];
-      item.vx += gx;
-      item.vy += gy;
-      item.x += item.vx * speedMult;
-      item.y += item.vy * speedMult;
+      item.vx += gx; item.vy += gy;
+      item.x += item.vx * speedMult * 0.35;
+      item.y += item.vy * speedMult * 0.35;
       item.rot += item.vrot * speedMult;
-      item.distortion += bassEnergy * 0.025;
-      // Speed cap — energy raises the cap
-      const spd = Math.sqrt(item.vx * item.vx + item.vy * item.vy);
-      const cap = 8 + energy * 6;
-      if (spd > cap) { item.vx *= cap / spd; item.vy *= cap / spd; }
-      // Wrap all edges
-      if (item.x < -60) item.x = this.width + 60;
-      if (item.x > this.width + 60) item.x = -60;
-      if (item.y < -60) item.y = this.height + 60;
-      if (item.y > this.height + 60) item.y = -60;
-      item.life -= 0.0018;
+      item.distortion += bassEnergy * 0.035;
+      const spd = Math.sqrt(item.vx*item.vx + item.vy*item.vy);
+      const cap = 16 + energy * 12;
+      if (spd > cap) { item.vx *= cap/spd; item.vy *= cap/spd; }
+      if (item.x < -90) item.x = this.width+90; if (item.x > this.width+90) item.x = -90;
+      if (item.y < -90) item.y = this.height+90; if (item.y > this.height+90) item.y = -90;
+      item.life -= 0.001;
       if (item.life <= 0) { this.foodItems.splice(i, 1); continue; }
-      this._drawEmojiItem(item, colors, bassEnergy);
+      this._drawDonut(item.x, item.y, item.r, item.rot, item.colors, item.distortion, bassEnergy, item.life);
     }
   }
 
-  // Paper Blizzard — near-zero gravity, turbulent wind from music, items swirl
-  drawPaper(data, energy, bassEnergy) {
-    const colors = this.colorSchemes[this.settings.colorScheme];
-    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    // Wind shifts direction slowly, energy amplifies turbulence
-    const windX = Math.sin(this.simPhase * 0.4) * (0.25 + energy * 0.9);
-    const windY = 0.015 + Math.sin(this.simPhase * 0.25) * 0.03; // near-zero downward drift
-    const speedMult = 0.35 + (this.bpm / 120) * 0.55 + energy * 0.7;
-    const paperEmojis = ['📄', '📃', '📋', '📝', '📖', '📚', '📰', '🗒️', '✉️', '📜'];
+  _drawDonut(x, y, r, rot, colors, distortion, bassEnergy, alpha) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.translate(x, y); ctx.rotate(rot);
 
-    const spawnRate = 0.09 + energy * 0.28 + beatPulse * 0.45;
-    if (Math.random() < spawnRate && this.paperItems.length < 160) {
+    if (distortion > 0.3 && bassEnergy > 0.4) {
+      ctx.save(); ctx.globalAlpha *= 0.42;
+      for (const [ox, col] of [[-distortion*6, 'rgba(255,40,40,0.7)'], [distortion*6, 'rgba(40,255,255,0.7)']]) {
+        ctx.beginPath(); ctx.arc(ox, 0, r, 0, Math.PI*2, false); ctx.arc(ox, 0, r*0.42, Math.PI*2, 0, true);
+        ctx.fillStyle = col; ctx.fill();
+      }
+      ctx.restore();
+    }
+    // Shadow
+    ctx.beginPath(); ctx.ellipse(r*0.1, r*0.76, r*0.72, r*0.18, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+    // Body ring
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2, false); ctx.arc(0, 0, r*0.42, Math.PI*2, 0, true);
+    const bodyGrad = ctx.createRadialGradient(-r*0.2, -r*0.2, r*0.08, 0, 0, r);
+    bodyGrad.addColorStop(0, '#e8a865'); bodyGrad.addColorStop(0.5, colors.body); bodyGrad.addColorStop(1, '#5a2e0a');
+    ctx.fillStyle = bodyGrad; ctx.fill();
+    // Glaze arc on top
+    ctx.beginPath(); ctx.arc(0, 0, r*0.92, -Math.PI*0.72, Math.PI*0.38, false); ctx.arc(0, 0, r*0.46, Math.PI*0.38, -Math.PI*0.72, true); ctx.closePath();
+    const glazeGrad = ctx.createRadialGradient(-r*0.25, -r*0.25, r*0.06, 0, 0, r*0.9);
+    glazeGrad.addColorStop(0, '#ffffff'); glazeGrad.addColorStop(0.3, colors.glaze); glazeGrad.addColorStop(1, colors.glaze);
+    ctx.fillStyle = glazeGrad; ctx.fill();
+    // Glaze specular
+    ctx.beginPath(); ctx.arc(-r*0.3, -r*0.28, r*0.18, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.68)'; ctx.fill();
+    // Hole
+    ctx.beginPath(); ctx.arc(0, 0, r*0.4, 0, Math.PI*2); ctx.fillStyle = '#000'; ctx.fill();
+    ctx.restore();
+  }
+
+  // Paper Blizzard — dense tumbling sheets of paper and books in music-driven wind
+  drawPaper(data, energy, bassEnergy) {
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    // Wind rotates slowly — longer cycle variation in direction
+    const windAngle = this.simPhase * 0.28;
+    const windStrength = 0.22 + energy * 0.75 + (this.bpm / 120) * 0.18;
+    const windX = Math.cos(windAngle) * windStrength;
+    const windY = 0.06 + Math.abs(Math.sin(windAngle)) * 0.08;
+    const speedMult = 1.0 + (this.bpm / 120) * 1.2 + energy * 1.6;
+    const paperColors = ['#ffffff', '#f8f8ec', '#eeeeff', '#fff8e0'];
+    const bookColors = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085'];
+
+    const burstCount = Math.floor(beatPulse * 7);
+    const bgSpawn = Math.random() < (0.7 + energy * 0.85) ? 1 : 0;
+    for (let s = 0; s < burstCount + bgSpawn && this.paperItems.length < 580; s++) {
+      const isBook = Math.random() < 0.3;
+      const fromSide = Math.random() < 0.4;
       this.paperItems.push({
-        x: Math.random() * this.width,
-        y: Math.random() < 0.6 ? -30 : Math.random() * this.height,
-        vx: (Math.random() - 0.5) * 3 + windX * 1.5,
-        vy: -0.3 + Math.random() * 1.5,
-        rot: Math.random() * Math.PI * 2,
-        vrot: (Math.random() - 0.5) * 0.28,
-        size: 16 + Math.random() * 18,
-        emoji: paperEmojis[Math.floor(Math.random() * paperEmojis.length)],
-        life: 1, distortion: 0,
-        wobble: Math.random() * Math.PI * 2
+        x: fromSide ? (Math.random() < 0.5 ? -50 : this.width+50) : Math.random()*this.width,
+        y: fromSide ? Math.random()*this.height : -50,
+        vx: windX*(2+Math.random()*5) + (Math.random()-0.5)*10,
+        vy: 2 + Math.random()*6,
+        rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.32,
+        w: isBook ? 12+Math.random()*14 : 30+Math.random()*32,
+        h: isBook ? 30+Math.random()*32 : 22+Math.random()*26,
+        color: isBook ? bookColors[Math.floor(Math.random()*bookColors.length)] : paperColors[Math.floor(Math.random()*paperColors.length)],
+        isBook, wobble: Math.random()*Math.PI*2, life: 1, distortion: 0
       });
     }
 
     for (let i = this.paperItems.length - 1; i >= 0; i--) {
       const item = this.paperItems[i];
-      item.wobble += 0.045 * speedMult;
-      // Wind turbulence — each paper wobbles independently, BPM speeds wobble
-      item.vx += windX * 0.06 + Math.sin(item.wobble) * 0.09 * (energy + 0.2);
-      item.vy += windY + Math.cos(item.wobble * 1.3) * 0.025;
-      item.x += item.vx * speedMult;
-      item.y += item.vy * speedMult;
+      item.wobble += 0.055 * speedMult;
+      item.vx += windX*0.09 + Math.sin(item.wobble)*0.14*energy;
+      item.vy += windY*0.5;
+      item.x += item.vx * speedMult * 0.38;
+      item.y += item.vy * speedMult * 0.38;
       item.rot += item.vrot * speedMult;
-      item.distortion += bassEnergy * 0.022;
-      // Speed cap
-      const spd = Math.sqrt(item.vx * item.vx + item.vy * item.vy);
-      const cap = 6 + energy * 4;
-      if (spd > cap) { item.vx *= cap / spd; item.vy *= cap / spd; }
-      // Wrap horizontally, remove if far off top/bottom
-      if (item.x < -60) item.x = this.width + 60;
-      if (item.x > this.width + 60) item.x = -60;
-      item.life -= 0.0014;
-      if (item.life <= 0 || item.y > this.height + 70 || item.y < -120) { this.paperItems.splice(i, 1); continue; }
-      this._drawEmojiItem(item, colors, bassEnergy);
+      item.distortion += bassEnergy * 0.032;
+      const spd = Math.sqrt(item.vx*item.vx + item.vy*item.vy);
+      const cap = 14 + energy * 9;
+      if (spd > cap) { item.vx *= cap/spd; item.vy *= cap/spd; }
+      if (item.x < -90) item.x = this.width+90; if (item.x > this.width+90) item.x = -90;
+      item.life -= 0.001;
+      if (item.life <= 0 || item.y > this.height + 90) { this.paperItems.splice(i, 1); continue; }
+      this._drawPaperItem(item, bassEnergy);
     }
   }
 
-  // Runway Drift — reverse/floating gravity, fashion items rise and sway like a catwalk
-  drawRunway(data, energy, bassEnergy) {
-    const colors = this.colorSchemes[this.settings.colorScheme];
-    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    const fashionEmojis = ['👗', '👠', '🧥', '👒', '👜', '💄', '💎', '👑', '🧣', '🕶️', '👡', '🥻'];
-    const speedMult = 0.5 + (this.bpm / 120) * 0.8 + energy * 0.85;
+  _drawPaperItem(item, bassEnergy) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, item.life);
+    ctx.translate(item.x, item.y); ctx.rotate(item.rot);
+    const { w, h, color, isBook, distortion } = item;
 
-    const spawnRate = 0.11 + energy * 0.35 + beatPulse * 0.55;
-    if (Math.random() < spawnRate && this.runwayItems.length < 175) {
+    if (distortion > 0.35 && bassEnergy > 0.45) {
+      ctx.save(); ctx.globalAlpha *= 0.38;
+      ctx.fillStyle = 'rgba(255,40,40,0.5)'; ctx.fillRect(-w/2-distortion*4, -h/2, w, h);
+      ctx.fillStyle = 'rgba(40,255,255,0.5)'; ctx.fillRect(-w/2+distortion*4, -h/2, w, h);
+      ctx.restore();
+    }
+
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
+
+    if (isBook) {
+      ctx.fillStyle = color; ctx.fillRect(-w/2, -h/2, w, h);
+      ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(-w/2, -h/2, w*0.28, h);
+      ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(-w/2+w*0.28, -h/2, 1.5, h);
+      const sheen = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
+      sheen.addColorStop(0, 'rgba(255,255,255,0.22)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sheen; ctx.fillRect(-w/2, -h/2, w, h);
+    } else {
+      ctx.fillStyle = color; ctx.fillRect(-w/2, -h/2, w, h);
+      ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+      ctx.fillStyle = 'rgba(0,0,0,0.14)'; ctx.fillRect(w/2-3, -h/2+3, 3, h-3); ctx.fillRect(-w/2+3, h/2-3, w-3, 3);
+      ctx.strokeStyle = 'rgba(170,170,170,0.75)'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(w/2-10, -h/2); ctx.lineTo(w/2, -h/2+10); ctx.stroke();
+      ctx.strokeStyle = 'rgba(130,130,130,0.4)'; ctx.lineWidth = 1;
+      for (let l = 0; l < 4; l++) { const ly = -h/2 + h*0.22 + l*(h*0.18); ctx.beginPath(); ctx.moveTo(-w/2+4, ly); ctx.lineTo(w/2-(l===3?w*0.35:4), ly); ctx.stroke(); }
+      const sheen = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
+      sheen.addColorStop(0, 'rgba(255,255,255,0.38)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sheen; ctx.fillRect(-w/2, -h/2, w, h);
+    }
+    ctx.restore();
+  }
+
+  // Runway Drift — overflowing glossy faceted jewels rising with reverse gravity
+  drawRunway(data, energy, bassEnergy) {
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    const speedMult = 1.2 + (this.bpm / 120) * 1.5 + energy * 2.0;
+    const gemColors = [
+      { m: '#ff1a1a', l: '#ff8888', d: '#660000' },
+      { m: '#1a88ff', l: '#88ccff', d: '#003388' },
+      { m: '#11cc44', l: '#88ffaa', d: '#006622' },
+      { m: '#dd22ff', l: '#ee99ff', d: '#550088' },
+      { m: '#ffaa00', l: '#ffe088', d: '#7a5000' },
+      { m: '#ffffff', l: '#ffffff', d: '#aaaaaa' },
+      { m: '#ff6622', l: '#ffbb88', d: '#882200' },
+      { m: '#00eeff', l: '#88f8ff', d: '#006688' },
+    ];
+
+    const burstCount = Math.floor(beatPulse * 8);
+    const bgSpawn = Math.random() < (0.72 + energy * 0.88) ? 1 : 0;
+    for (let s = 0; s < burstCount + bgSpawn && this.runwayItems.length < 650; s++) {
+      const c = gemColors[Math.floor(Math.random() * gemColors.length)];
       this.runwayItems.push({
-        x: Math.random() * this.width,
-        y: this.height + 45, // spawn from bottom
-        vx: (Math.random() - 0.5) * 1.8,
-        vy: -(1.2 + Math.random() * 2.0 + energy * 1.8), // upward
-        rot: (Math.random() - 0.5) * 0.35,
-        size: 20 + energy * 18 + Math.random() * 10,
-        emoji: fashionEmojis[Math.floor(Math.random() * fashionEmojis.length)],
-        life: 1, distortion: 0,
-        swayPhase: Math.random() * Math.PI * 2
+        x: Math.random() * this.width, y: this.height + 50,
+        vx: (Math.random()-0.5)*8,
+        vy: -(4 + Math.random()*6 + energy*5),
+        rot: Math.random()*Math.PI, vrot: (Math.random()-0.5)*0.07,
+        size: 12+energy*24+Math.random()*16, color: c,
+        swayPhase: Math.random()*Math.PI*2, life: 1, distortion: 0
       });
     }
 
-    // Antigravity (upward pull), strength tied to energy so a high-energy track lifts faster
-    const antigravity = -(0.04 + energy * 0.09);
+    // Antigravity — energy directly amplifies upward pull
+    const antigravity = -(0.1 + energy * 0.22 + (this.bpm / 120) * 0.06);
 
     for (let i = this.runwayItems.length - 1; i >= 0; i--) {
       const item = this.runwayItems[i];
-      // Sway speed tied to BPM — catwalk rhythm
-      item.swayPhase += 0.032 * speedMult * (this.bpm / 120);
+      item.swayPhase += 0.038 * speedMult * (this.bpm / 120);
       item.vy += antigravity;
-      item.vx += Math.sin(item.swayPhase) * 0.07;
-      item.x += item.vx * speedMult;
-      item.y += item.vy * speedMult;
-      item.rot = Math.sin(item.swayPhase * 0.5) * 0.28;
-      item.distortion += bassEnergy * 0.025;
-      // Wrap horizontally
-      if (item.x < -60) item.x = this.width + 60;
-      if (item.x > this.width + 60) item.x = -60;
-      item.life -= 0.002;
-      if (item.life <= 0 || item.y < -110) { this.runwayItems.splice(i, 1); continue; }
-      this._drawEmojiItem(item, colors, bassEnergy);
+      item.vx += Math.sin(item.swayPhase) * 0.12;
+      item.x += item.vx * speedMult * 0.36;
+      item.y += item.vy * speedMult * 0.36;
+      item.rot += item.vrot * speedMult;
+      item.distortion += bassEnergy * 0.035;
+      if (item.x < -80) item.x = this.width+80; if (item.x > this.width+80) item.x = -80;
+      item.life -= 0.001;
+      if (item.life <= 0 || item.y < -130) { this.runwayItems.splice(i, 1); continue; }
+      this._drawGem(item.x, item.y, item.size, item.rot, item.color, item.distortion, bassEnergy, item.life);
     }
+  }
+
+  _drawGem(x, y, size, rot, color, distortion, bassEnergy, alpha) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.translate(x, y); ctx.rotate(rot);
+
+    // Glow halo — bass makes it flare
+    const glowR = size * (1.5 + distortion * 0.5 + bassEnergy * 0.6);
+    const glow = ctx.createRadialGradient(0, 0, size*0.25, 0, 0, glowR);
+    glow.addColorStop(0, color.m + 'aa'); glow.addColorStop(1, color.m + '00');
+    ctx.beginPath(); ctx.arc(0, 0, glowR, 0, Math.PI*2); ctx.fillStyle = glow; ctx.fill();
+
+    if (distortion > 0.28 && bassEnergy > 0.38) {
+      ctx.save(); ctx.globalAlpha *= 0.42;
+      this._drawGemShape(ctx, -distortion*6, 0, size, 'rgba(255,40,40,0.72)');
+      this._drawGemShape(ctx, distortion*6, 0, size, 'rgba(40,255,255,0.72)');
+      ctx.restore();
+    }
+
+    // Main faceted diamond
+    const facetGrad = ctx.createLinearGradient(0, -size, 0, size);
+    facetGrad.addColorStop(0, '#ffffff'); facetGrad.addColorStop(0.2, color.l);
+    facetGrad.addColorStop(0.55, color.m); facetGrad.addColorStop(0.85, color.d); facetGrad.addColorStop(1, '#000000');
+    this._drawGemShape(ctx, 0, 0, size, facetGrad);
+
+    // Facet lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(0, -size); ctx.lineTo(size*0.62, 0); ctx.moveTo(0, -size); ctx.lineTo(-size*0.62, 0);
+    ctx.moveTo(-size*0.62, 0); ctx.lineTo(0, size); ctx.moveTo(size*0.62, 0); ctx.lineTo(0, size);
+    ctx.moveTo(-size*0.62, 0); ctx.lineTo(size*0.62, 0);
+    ctx.stroke();
+
+    // Specular spot
+    ctx.beginPath(); ctx.arc(-size*0.2, -size*0.35, size*0.15, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+    ctx.restore();
+  }
+
+  _drawGemShape(ctx, ox, oy, size, fillStyle) {
+    ctx.beginPath();
+    ctx.moveTo(ox, oy - size); ctx.lineTo(ox + size*0.62, oy);
+    ctx.lineTo(ox, oy + size); ctx.lineTo(ox - size*0.62, oy);
+    ctx.closePath(); ctx.fillStyle = fillStyle; ctx.fill();
   }
 
   // ─── Landmark Drawings ─────────────────────────────────────────────────────
@@ -1401,6 +1516,30 @@ class Visualizer {
       ctx.arc(cx + dx, baseY - 140, 10, Math.PI, 0);
       ctx.stroke();
     });
+  }
+
+  // ─── YouTube iframe (VHS mode) ─────────────────────────────────────────────
+
+  _ensureYouTubeFrame() {
+    if (this._ytFrame) return;
+    const container = this.canvas.parentElement;
+    const iframe = document.createElement('iframe');
+    iframe.src = 'https://www.youtube.com/embed/CRznPhtWA6A?autoplay=1&mute=1&loop=1&playlist=CRznPhtWA6A&controls=0&modestbranding=1&rel=0&showinfo=0';
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none;z-index:0;pointer-events:none;';
+    container.appendChild(iframe);
+    this.canvas.style.position = 'relative';
+    this.canvas.style.zIndex = '1';
+    this.canvas.style.background = 'transparent';
+    this._ytFrame = iframe;
+  }
+
+  _removeYouTubeFrame() {
+    if (!this._ytFrame) return;
+    this._ytFrame.remove();
+    this._ytFrame = null;
+    this.canvas.style.zIndex = '';
+    this.canvas.style.background = '';
   }
 
   // ─── Utility ───────────────────────────────────────────────────────────────
