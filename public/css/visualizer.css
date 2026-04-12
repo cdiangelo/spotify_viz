@@ -97,3 +97,9 @@
   flex-direction: column;
   gap: 0.2rem;
 }
+
+.range-label {
+  font-size: 0.7rem;
+  color: var(--accent);
+  font-weight: 600;
+}

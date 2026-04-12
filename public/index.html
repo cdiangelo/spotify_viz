@@ -76,16 +76,55 @@
         </div>
         <div class="control-grid">
           <div class="control-group">
+            <label>Visualization Mode</label>
+            <select id="viz-mode">
+              <option value="solitaire">Solitaire Celebration</option>
+              <option value="dvd">DVD Logo Bounce</option>
+              <option value="vhs">VHS Landmarks</option>
+              <option value="toys">Toy Avalanche</option>
+              <option value="food">Food Storm</option>
+              <option value="paper">Paper Blizzard</option>
+              <option value="runway">Runway Drift</option>
+            </select>
+          </div>
+          <div class="control-group">
             <label>Color Scheme</label>
             <select id="color-scheme">
               <option value="spotify">Spotify Green</option>
-              <option value="rainbow">Rainbow</option>
+              <option value="neon">Neon</option>
               <option value="fire">Fire</option>
               <option value="ocean">Ocean</option>
-              <option value="neon">Neon</option>
-              <option value="pastel">Pastel</option>
               <option value="monochrome">Monochrome</option>
             </select>
+          </div>
+          <div class="control-group">
+            <label>Pattern Size</label>
+            <input type="range" id="pattern-size" min="25" max="200" value="100">
+          </div>
+          <div class="control-group">
+            <label>Speed <span id="speed-label" class="range-label">1x</span></label>
+            <input type="range" id="speed-mult" min="25" max="400" value="100">
+          </div>
+          <div class="control-group">
+            <label>Wave Size</label>
+            <input type="range" id="wave-size" min="10" max="200" value="80">
+          </div>
+          <div class="control-group">
+            <label>Color Flash</label>
+            <input type="checkbox" id="color-flash" checked>
+          </div>
+          <div class="control-group">
+            <label>Video Speed</label>
+            <select id="video-speed">
+              <option value="1">1x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+              <option value="3">3x</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Video Position</label>
+            <input type="range" id="video-position" min="0" max="100" value="0">
           </div>
           <div class="control-group">
             <label>Geometric Overlay</label>
@@ -110,34 +149,6 @@
           <div class="control-group">
             <label>Overlay Opacity</label>
             <input type="range" id="overlay-opacity" min="0" max="100" value="40">
-          </div>
-          <div class="control-group">
-            <label>Bounce Intensity</label>
-            <input type="range" id="bounce-intensity" min="0" max="100" value="60">
-          </div>
-          <div class="control-group">
-            <label>Wave Frequency</label>
-            <input type="range" id="wave-freq" min="1" max="20" value="8">
-          </div>
-          <div class="control-group">
-            <label>Wave Size</label>
-            <input type="range" id="wave-size" min="10" max="200" value="80">
-          </div>
-          <div class="control-group">
-            <label>Color Flash</label>
-            <input type="checkbox" id="color-flash" checked>
-          </div>
-          <div class="control-group">
-            <label>Visualization Mode</label>
-            <select id="viz-mode">
-              <option value="solitaire">Solitaire Celebration</option>
-              <option value="dvd">DVD Logo Bounce</option>
-              <option value="vhs">VHS Landmarks</option>
-              <option value="toys">Toy Avalanche</option>
-              <option value="food">Food Storm</option>
-              <option value="paper">Paper Blizzard</option>
-              <option value="runway">Runway Drift</option>
-            </select>
           </div>
         </div>
       </div>

@@ -31,10 +31,11 @@ class Visualizer {
       overlaySize: 80,
       overlayOverlap: 0.75,
       overlayOpacity: 0.4,
-      bounceIntensity: 0.6,
-      waveFreq: 8,
       waveSize: 80,
       colorFlash: true,
+      patternSize: 1.0,   // 0.25-2.0 multiplier on item size
+      speedMult: 1.0,     // 0.25-4.0 multiplier on top of music sync
+      videoSpeed: 1,
       vizMode: 'solitaire'
     };
 
@@ -111,11 +112,39 @@ class Visualizer {
     bind('overlay-size', 'overlaySize');
     bind('overlay-overlap', 'overlayOverlap', v => v / 100);
     bind('overlay-opacity', 'overlayOpacity', v => v / 100);
-    bind('bounce-intensity', 'bounceIntensity', v => v / 100);
-    bind('wave-freq', 'waveFreq');
     bind('wave-size', 'waveSize');
     bind('color-flash', 'colorFlash');
+    bind('pattern-size', 'patternSize', v => v / 100);
+    bind('speed-mult', 'speedMult', v => v / 100);
     bind('viz-mode', 'vizMode');
+
+    // Speed label update
+    const speedEl = document.getElementById('speed-mult');
+    if (speedEl) {
+      const label = document.getElementById('speed-label');
+      const updateLabel = () => {
+        const v = parseFloat(speedEl.value) / 100;
+        label.textContent = (v < 1 ? v.toFixed(2) : v % 1 === 0 ? v + '' : v.toFixed(1)) + 'x';
+      };
+      speedEl.addEventListener('input', updateLabel);
+    }
+
+    // Video speed
+    const vidSpeedEl = document.getElementById('video-speed');
+    if (vidSpeedEl) {
+      vidSpeedEl.addEventListener('change', () => {
+        this.settings.videoSpeed = parseFloat(vidSpeedEl.value);
+        this._setVideoSpeed(this.settings.videoSpeed);
+      });
+    }
+
+    // Video position seek
+    const vidPosEl = document.getElementById('video-position');
+    if (vidPosEl) {
+      vidPosEl.addEventListener('input', () => {
+        this._seekVideo(parseFloat(vidPosEl.value));
+      });
+    }
   }
 
   // ─── Audio Connection ──────────────────────────────────────────────────────
@@ -187,6 +216,7 @@ class Visualizer {
     if (this.isRunning) return;
     this.isRunning = true;
     this.connectToAudio();
+    this._ensureYouTubeFrame();
     this.animate();
   }
 
@@ -217,12 +247,10 @@ class Visualizer {
     const energy = avg / 255;
     const bassEnergy = Array.from(freqData).slice(0, 8).reduce((a, b) => a + b, 0) / (8 * 255);
 
-    // Clear — in VHS mode canvas is transparent so YouTube iframe shows through
+    // Clear — VHS mode: transparent canvas reveals YouTube iframe beneath
     if (this.settings.vizMode === 'vhs') {
       this.ctx.clearRect(0, 0, this.width, this.height);
-      this._ensureYouTubeFrame();
     } else {
-      this._removeYouTubeFrame();
       this.ctx.fillStyle = '#000';
       this.ctx.fillRect(0, 0, this.width, this.height);
     }
@@ -577,53 +605,31 @@ class Visualizer {
     this.bpm = f.tempo || 120;
     this.beatInterval = 60000 / this.bpm;
 
-    // Energy (0-1) → bounce intensity + wave size
+    // Energy → wave size (turbulence amplitude for standalone modes)
     const energy = f.energy || 0.5;
-    this.settings.bounceIntensity = 0.2 + energy * 0.8;
     this.settings.waveSize = 30 + energy * 170;
 
-    // Danceability (0-1) → wave frequency (higher dance = tighter waves)
-    const dance = f.danceability || 0.5;
-    this.settings.waveFreq = 3 + Math.round(dance * 17);
-
-    // Valence/mood (0-1) → color scheme
+    // Valence/mood → color scheme
     const valence = f.valence || 0.5;
-    if (valence > 0.75) this.settings.colorScheme = 'rainbow';
-    else if (valence > 0.55) this.settings.colorScheme = 'neon';
-    else if (valence > 0.35) this.settings.colorScheme = 'spotify';
+    if (valence > 0.7) this.settings.colorScheme = 'fire';
+    else if (valence > 0.5) this.settings.colorScheme = 'neon';
+    else if (valence > 0.3) this.settings.colorScheme = 'spotify';
     else if (valence > 0.15) this.settings.colorScheme = 'ocean';
     else this.settings.colorScheme = 'monochrome';
 
-    // Acousticness → overlay (acoustic = organic shapes, electronic = geometric)
-    const acoustic = f.acousticness || 0;
-    if (acoustic > 0.6) this.settings.geoOverlay = 'circles';
-    else if (acoustic > 0.3) this.settings.geoOverlay = 'hexagons';
-    else this.settings.geoOverlay = 'diamonds';
-
-    // Instrumentalness → overlay opacity (instrumental = more visible overlays)
-    this.settings.overlayOpacity = 0.15 + (f.instrumentalness || 0) * 0.5;
-    this.settings.overlaySize = 50 + energy * 100;
-
-    // High energy + dance → flash on, else off
+    // High energy + dance → flash on
+    const dance = f.danceability || 0.5;
     this.settings.colorFlash = energy > 0.5 && dance > 0.4;
 
-    // NOTE: vizMode is never changed by sync — the user controls which
-    // visualization mode they want and all modes receive the same
-    // song-based guidance (bounce, wave, color, overlays, BPM pulse).
+    // NOTE: vizMode, patternSize, speedMult never changed by sync —
+    // user controls those. BPM pulse drives all mode speeds inherently.
 
-    // Update the UI controls to reflect the new values
     this.syncControlsToUI();
   }
 
   syncControlsToUI() {
     const s = this.settings;
     this.setControl('color-scheme', s.colorScheme);
-    this.setControl('geo-overlay', s.geoOverlay);
-    this.setControl('overlay-size', s.overlaySize);
-    this.setControl('overlay-overlap', s.overlayOverlap * 100);
-    this.setControl('overlay-opacity', s.overlayOpacity * 100);
-    this.setControl('bounce-intensity', s.bounceIntensity * 100);
-    this.setControl('wave-freq', s.waveFreq);
     this.setControl('wave-size', s.waveSize);
     this.setControl('color-flash', s.colorFlash);
   }
@@ -642,6 +648,9 @@ class Visualizer {
     const colors = this.colorSchemes[this.settings.colorScheme];
     const now = performance.now();
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
+    const waveAmp = this.settings.waveSize / 100;
 
     // Spawn new cards on each beat or with energy bursts
     const spawnRate = 0.15 + energy * 0.5 + beatPulse * 0.8;
@@ -662,8 +671,8 @@ class Visualizer {
         vy: -2 - Math.random() * 3,
         rot: Math.random() * Math.PI * 2,
         vrot: (Math.random() - 0.5) * 0.2,
-        w: 30 + energy * 25,
-        h: 42 + energy * 35,
+        w: (30 + energy * 25) * pSize,
+        h: (42 + energy * 35) * pSize,
         color: colors[Math.floor(Math.random() * colors.length)],
         suit: Math.floor(Math.random() * 4),
         life: 1,
@@ -673,13 +682,14 @@ class Visualizer {
     }
 
     // Gravity is tempo-driven: faster BPM = stronger "excitement"
-    const gravity = 0.15 + (this.bpm / 120) * 0.15 + energy * 0.3;
+    const gravity = (0.15 + (this.bpm / 120) * 0.15 + energy * 0.3) * uSpeed;
 
     for (let i = this.solitaireCards.length - 1; i >= 0; i--) {
       const card = this.solitaireCards[i];
       card.vy += gravity;
-      card.x += card.vx;
-      card.y += card.vy;
+      card.vx += Math.sin(now * 0.003 + card.y * 0.01) * waveAmp * 0.15;
+      card.x += card.vx * uSpeed;
+      card.y += card.vy * uSpeed;
       card.rot += card.vrot;
 
       // Distortion grows on bass hits and over time
@@ -759,13 +769,15 @@ class Visualizer {
   drawDVD(data, energy, bassEnergy) {
     const colors = this.colorSchemes[this.settings.colorScheme];
     const logo = this.dvdLogo;
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
 
-    // Speed tied to BPM
-    const speedMult = 1 + (this.bpm / 120 - 1) * 0.8 + energy * 1.2;
+    // Speed tied to BPM, scaled by user speed multiplier
+    const speedMult = (1 + (this.bpm / 120 - 1) * 0.8 + energy * 1.2) * uSpeed;
 
-    // Logo size (scale with energy)
-    const logoW = 160 + energy * 60;
-    const logoH = 80 + energy * 30;
+    // Logo size (scale with energy + patternSize)
+    const logoW = (160 + energy * 60) * pSize;
+    const logoH = (80 + energy * 30) * pSize;
 
     // Update position
     logo.x += logo.vx * speedMult;
@@ -839,9 +851,10 @@ class Visualizer {
   drawVHS(data, energy, bassEnergy) {
     const now = performance.now();
     const state = this.vhsState;
+    const uSpeed = this.settings.speedMult;
 
     // "Channel switch" on a musical interval or big bass hit — updates title text
-    const slideInterval = Math.max(3000, 60000 / this.bpm * 8);
+    const slideInterval = Math.max(3000, (60000 / this.bpm * 8) / uSpeed);
     const elapsed = now - state.lastSlide;
     if (elapsed > slideInterval || (bassEnergy > 0.85 && elapsed > 1500)) {
       state.slideIdx = (state.slideIdx + 1) % this.landmarks.length;
@@ -852,8 +865,8 @@ class Visualizer {
 
     state.transitionProgress = Math.min(1, state.transitionProgress + 0.02);
     state.jitter *= 0.96;
-    // scanY speed is audio-driven: faster BPM + energy = faster scan
-    state.scanY = (state.scanY + 1.5 + (this.bpm / 120) * 1.5 + energy * 3.5) % this.height;
+    // scanY speed is audio-driven: faster BPM + energy = faster scan, user speed scales
+    state.scanY = (state.scanY + (1.5 + (this.bpm / 120) * 1.5 + energy * 3.5) * uSpeed) % this.height;
 
     const ctx = this.ctx;
 
@@ -933,8 +946,11 @@ class Visualizer {
   // Toy Avalanche — dense mass of plastic bouncy balls, BPM-driven gravity
   drawToys(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    // Speed: base 1.5x, scales hard with BPM and energy
-    const speedMult = 1.5 + (this.bpm / 120) * 1.6 + energy * 2.2;
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
+    const waveAmp = this.settings.waveSize / 100;
+    const now = performance.now();
+    const speedMult = (1.5 + (this.bpm / 120) * 1.6 + energy * 2.2) * uSpeed;
     const ballColors = [
       { m: '#ff2020', l: '#ff9090', d: '#7a0000' },
       { m: '#ff8800', l: '#ffd090', d: '#7a4000' },
@@ -946,7 +962,6 @@ class Visualizer {
       { m: '#00ddff', l: '#88f5ff', d: '#006f7a' },
     ];
 
-    // Burst on beat + continuous flood; long life = dense pileup
     const burstCount = Math.floor(beatPulse * 8);
     const bgSpawn = Math.random() < (0.75 + energy * 0.8) ? 1 : 0;
     for (let s = 0; s < burstCount + bgSpawn && this.toyItems.length < 680; s++) {
@@ -956,15 +971,16 @@ class Visualizer {
       else if (side === 1) { x = -40; y = Math.random()*this.height*0.7; vx = 5+Math.random()*9; vy = (Math.random()-0.5)*9; }
       else { x = this.width+40; y = Math.random()*this.height*0.7; vx = -(5+Math.random()*9); vy = (Math.random()-0.5)*9; }
       const c = ballColors[Math.floor(Math.random() * ballColors.length)];
-      this.toyItems.push({ x, y, vx, vy, r: 10+energy*20+Math.random()*16, color: c, life: 1, bounces: 0, distortion: 0 });
+      this.toyItems.push({ x, y, vx, vy, r: (10+energy*20+Math.random()*16) * pSize, color: c, life: 1, bounces: 0, distortion: 0 });
     }
 
-    // Gravity: BPM raises the pull so fast songs create a heavier avalanche
-    const gravity = 0.35 + (this.bpm / 120) * 0.35 + energy * 0.55;
+    const gravity = (0.35 + (this.bpm / 120) * 0.35 + energy * 0.55) * uSpeed;
 
     for (let i = this.toyItems.length - 1; i >= 0; i--) {
       const item = this.toyItems[i];
       item.vy += gravity;
+      // Wave turbulence — waveSize makes items oscillate in wave patterns
+      item.vx += Math.sin(now * 0.003 + item.y * 0.012) * waveAmp * 0.2;
       item.x += item.vx * speedMult * 0.35;
       item.y += item.vy * speedMult * 0.35;
       item.distortion += bassEnergy * 0.05;
@@ -1024,12 +1040,15 @@ class Visualizer {
   // Food Storm — overflowing donuts with music-driven rotating sideways gravity
   drawFood(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    // Gravity direction slowly rotates with simPhase — the storm shifts over time
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
+    const waveAmp = this.settings.waveSize / 100;
+    const now = performance.now();
     const gravityAngle = Math.sin(this.simPhase * 0.2) * 0.9;
-    const gStrength = 0.28 + energy * 0.45 + (this.bpm / 120) * 0.18;
+    const gStrength = (0.28 + energy * 0.45 + (this.bpm / 120) * 0.18) * uSpeed;
     const gx = Math.sin(gravityAngle) * gStrength;
     const gy = Math.abs(Math.cos(gravityAngle)) * gStrength * 0.5 + 0.1;
-    const speedMult = 1.1 + (this.bpm / 120) * 1.3 + energy * 1.8;
+    const speedMult = (1.1 + (this.bpm / 120) * 1.3 + energy * 1.8) * uSpeed;
     const glazeColors = [
       { glaze: '#ff82b8', body: '#c4843c' },
       { glaze: '#6b3a1f', body: '#c4843c' },
@@ -1051,12 +1070,13 @@ class Visualizer {
       else if (edge === 2) { x = -45; y = Math.random()*this.height; vx = 5+Math.random()*9; vy = (Math.random()-0.5)*9; }
       else { x = Math.random()*this.width; y = this.height+45; vx = (Math.random()-0.5)*12; vy = -(3+Math.random()*6); }
       const c = glazeColors[Math.floor(Math.random() * glazeColors.length)];
-      this.foodItems.push({ x, y, vx, vy, rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.25, r: 14+energy*22+Math.random()*16, colors: c, life: 1, distortion: 0 });
+      this.foodItems.push({ x, y, vx, vy, rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.25, r: (14+energy*22+Math.random()*16) * pSize, colors: c, life: 1, distortion: 0 });
     }
 
     for (let i = this.foodItems.length - 1; i >= 0; i--) {
       const item = this.foodItems[i];
       item.vx += gx; item.vy += gy;
+      item.vx += Math.sin(now * 0.002 + item.y * 0.01) * waveAmp * 0.18;
       item.x += item.vx * speedMult * 0.35;
       item.y += item.vy * speedMult * 0.35;
       item.rot += item.vrot * speedMult;
@@ -1110,12 +1130,14 @@ class Visualizer {
   // Paper Blizzard — dense tumbling sheets of paper and books in music-driven wind
   drawPaper(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    // Wind rotates slowly — longer cycle variation in direction
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
+    const waveAmp = this.settings.waveSize / 100;
     const windAngle = this.simPhase * 0.28;
-    const windStrength = 0.22 + energy * 0.75 + (this.bpm / 120) * 0.18;
+    const windStrength = (0.22 + energy * 0.75 + (this.bpm / 120) * 0.18) * uSpeed;
     const windX = Math.cos(windAngle) * windStrength;
-    const windY = 0.06 + Math.abs(Math.sin(windAngle)) * 0.08;
-    const speedMult = 1.0 + (this.bpm / 120) * 1.2 + energy * 1.6;
+    const windY = (0.06 + Math.abs(Math.sin(windAngle)) * 0.08) * uSpeed;
+    const speedMult = (1.0 + (this.bpm / 120) * 1.2 + energy * 1.6) * uSpeed;
     const paperColors = ['#ffffff', '#f8f8ec', '#eeeeff', '#fff8e0'];
     const bookColors = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085'];
 
@@ -1130,8 +1152,8 @@ class Visualizer {
         vx: windX*(2+Math.random()*5) + (Math.random()-0.5)*10,
         vy: 2 + Math.random()*6,
         rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.32,
-        w: isBook ? 12+Math.random()*14 : 30+Math.random()*32,
-        h: isBook ? 30+Math.random()*32 : 22+Math.random()*26,
+        w: (isBook ? 12+Math.random()*14 : 30+Math.random()*32) * pSize,
+        h: (isBook ? 30+Math.random()*32 : 22+Math.random()*26) * pSize,
         color: isBook ? bookColors[Math.floor(Math.random()*bookColors.length)] : paperColors[Math.floor(Math.random()*paperColors.length)],
         isBook, wobble: Math.random()*Math.PI*2, life: 1, distortion: 0
       });
@@ -1141,6 +1163,7 @@ class Visualizer {
       const item = this.paperItems[i];
       item.wobble += 0.055 * speedMult;
       item.vx += windX*0.09 + Math.sin(item.wobble)*0.14*energy;
+      item.vx += Math.cos(item.wobble * 0.7) * waveAmp * 0.12;
       item.vy += windY*0.5;
       item.x += item.vx * speedMult * 0.38;
       item.y += item.vy * speedMult * 0.38;
@@ -1198,7 +1221,11 @@ class Visualizer {
   // Runway Drift — overflowing glossy faceted jewels rising with reverse gravity
   drawRunway(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    const speedMult = 1.2 + (this.bpm / 120) * 1.5 + energy * 2.0;
+    const pSize = this.settings.patternSize;
+    const uSpeed = this.settings.speedMult;
+    const waveAmp = this.settings.waveSize / 100;
+    const now = performance.now();
+    const speedMult = (1.2 + (this.bpm / 120) * 1.5 + energy * 2.0) * uSpeed;
     const gemColors = [
       { m: '#ff1a1a', l: '#ff8888', d: '#660000' },
       { m: '#1a88ff', l: '#88ccff', d: '#003388' },
@@ -1219,19 +1246,20 @@ class Visualizer {
         vx: (Math.random()-0.5)*8,
         vy: -(4 + Math.random()*6 + energy*5),
         rot: Math.random()*Math.PI, vrot: (Math.random()-0.5)*0.07,
-        size: 12+energy*24+Math.random()*16, color: c,
+        size: (12+energy*24+Math.random()*16) * pSize, color: c,
         swayPhase: Math.random()*Math.PI*2, life: 1, distortion: 0
       });
     }
 
     // Antigravity — energy directly amplifies upward pull
-    const antigravity = -(0.1 + energy * 0.22 + (this.bpm / 120) * 0.06);
+    const antigravity = -(0.1 + energy * 0.22 + (this.bpm / 120) * 0.06) * uSpeed;
 
     for (let i = this.runwayItems.length - 1; i >= 0; i--) {
       const item = this.runwayItems[i];
       item.swayPhase += 0.038 * speedMult * (this.bpm / 120);
       item.vy += antigravity;
-      item.vx += Math.sin(item.swayPhase) * 0.12;
+      // Sway + wave turbulence
+      item.vx += Math.sin(item.swayPhase) * 0.12 + Math.sin(now * 0.002 + item.y * 0.008) * waveAmp * 0.1;
       item.x += item.vx * speedMult * 0.36;
       item.y += item.vy * speedMult * 0.36;
       item.rot += item.vrot * speedMult;
@@ -1518,28 +1546,36 @@ class Visualizer {
     });
   }
 
-  // ─── YouTube iframe (VHS mode) ─────────────────────────────────────────────
+  // ─── YouTube iframe (persistent, plays behind canvas) ──────────────────────
 
   _ensureYouTubeFrame() {
     if (this._ytFrame) return;
     const container = this.canvas.parentElement;
     const iframe = document.createElement('iframe');
-    iframe.src = 'https://www.youtube.com/embed/CRznPhtWA6A?autoplay=1&mute=1&loop=1&playlist=CRznPhtWA6A&controls=0&modestbranding=1&rel=0&showinfo=0';
+    iframe.id = 'vhs-yt-frame';
+    iframe.src = 'https://www.youtube.com/embed/CRznPhtWA6A?autoplay=1&mute=1&loop=1&playlist=CRznPhtWA6A&controls=0&modestbranding=1&rel=0&showinfo=0&enablejsapi=1';
     iframe.allow = 'autoplay; encrypted-media';
     iframe.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none;z-index:0;pointer-events:none;';
     container.appendChild(iframe);
     this.canvas.style.position = 'relative';
     this.canvas.style.zIndex = '1';
-    this.canvas.style.background = 'transparent';
     this._ytFrame = iframe;
   }
 
-  _removeYouTubeFrame() {
+  _setVideoSpeed(rate) {
     if (!this._ytFrame) return;
-    this._ytFrame.remove();
-    this._ytFrame = null;
-    this.canvas.style.zIndex = '';
-    this.canvas.style.background = '';
+    this._ytFrame.contentWindow.postMessage(JSON.stringify({
+      event: 'command', func: 'setPlaybackRate', args: [rate]
+    }), '*');
+  }
+
+  _seekVideo(percent) {
+    if (!this._ytFrame) return;
+    // Map 0-100 slider to seconds (7200s max ≈ 2h; YouTube clamps to actual length)
+    const seconds = (percent / 100) * 7200;
+    this._ytFrame.contentWindow.postMessage(JSON.stringify({
+      event: 'command', func: 'seekTo', args: [seconds, true]
+    }), '*');
   }
 
   // ─── Utility ───────────────────────────────────────────────────────────────
