@@ -45,8 +45,6 @@ class Visualizer {
     this.dvdLogo = { x: 100, y: 100, vx: 3, vy: 3, colorIdx: 0, hitFlash: 0 };
     this.vhsState = { slideIdx: 0, lastSlide: 0, scanY: 0, jitter: 0, transitionProgress: 1 };
     this.toyItems = [];
-    this.foodItems = [];
-    this.paperItems = [];
     this.runwayItems = [];
     this._ytFrame = null;
 
@@ -285,8 +283,6 @@ class Visualizer {
       case 'dvd': this.drawDVD(freqData, energy, bassEnergy); break;
       case 'vhs': this.drawVHS(freqData, energy, bassEnergy); break;
       case 'toys': this.drawToys(freqData, energy, bassEnergy); break;
-      case 'food': this.drawFood(freqData, energy, bassEnergy); break;
-      case 'paper': this.drawPaper(freqData, energy, bassEnergy); break;
       case 'runway': this.drawRunway(freqData, energy, bassEnergy); break;
     }
 
@@ -944,7 +940,7 @@ class Visualizer {
 
   // ─── New Themed Wave Modes ─────────────────────────────────────────────────
 
-  // Toy Avalanche — dense mass of plastic bouncy balls, BPM-driven gravity
+  // Balls — dense mass of plastic bouncy balls, BPM-driven gravity
   drawToys(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
     const pSize = this.settings.patternSize;
@@ -1038,188 +1034,7 @@ class Visualizer {
     ctx.restore();
   }
 
-  // Food Storm — overflowing donuts with music-driven rotating sideways gravity
-  drawFood(data, energy, bassEnergy) {
-    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    const pSize = this.settings.patternSize;
-    const uSpeed = this.settings.speedMult;
-    const waveAmp = this.settings.waveSize / 100;
-    const now = performance.now();
-    const gravityAngle = Math.sin(this.simPhase * 0.2) * 0.9;
-    const gStrength = (0.28 + energy * 0.45 + (this.bpm / 120) * 0.18) * uSpeed;
-    const gx = Math.sin(gravityAngle) * gStrength;
-    const gy = Math.abs(Math.cos(gravityAngle)) * gStrength * 0.5 + 0.1;
-    const speedMult = (1.1 + (this.bpm / 120) * 1.3 + energy * 1.8) * uSpeed;
-    const glazeColors = [
-      { glaze: '#ff82b8', body: '#c4843c' },
-      { glaze: '#6b3a1f', body: '#c4843c' },
-      { glaze: '#f5f5f5', body: '#c4843c' },
-      { glaze: '#ff4422', body: '#c4843c' },
-      { glaze: '#44aaff', body: '#c4843c' },
-      { glaze: '#88ff44', body: '#c4843c' },
-      { glaze: '#ffdd00', body: '#c4843c' },
-      { glaze: '#cc44ff', body: '#c4843c' },
-    ];
-
-    const burstCount = Math.floor(beatPulse * 7);
-    const bgSpawn = Math.random() < (0.7 + energy * 0.85) ? 1 : 0;
-    for (let s = 0; s < burstCount + bgSpawn && this.foodItems.length < 600; s++) {
-      const edge = Math.floor(Math.random() * 4);
-      let x, y, vx, vy;
-      if (edge === 0) { x = Math.random()*this.width; y = -45; vx = (Math.random()-0.5)*12; vy = 3+Math.random()*6; }
-      else if (edge === 1) { x = this.width+45; y = Math.random()*this.height; vx = -(5+Math.random()*9); vy = (Math.random()-0.5)*9; }
-      else if (edge === 2) { x = -45; y = Math.random()*this.height; vx = 5+Math.random()*9; vy = (Math.random()-0.5)*9; }
-      else { x = Math.random()*this.width; y = this.height+45; vx = (Math.random()-0.5)*12; vy = -(3+Math.random()*6); }
-      const c = glazeColors[Math.floor(Math.random() * glazeColors.length)];
-      this.foodItems.push({ x, y, vx, vy, rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.25, r: (14+energy*22+Math.random()*16) * pSize, colors: c, life: 1, distortion: 0 });
-    }
-
-    for (let i = this.foodItems.length - 1; i >= 0; i--) {
-      const item = this.foodItems[i];
-      item.vx += gx; item.vy += gy;
-      item.vx += Math.sin(now * 0.002 + item.y * 0.01) * waveAmp * 0.18;
-      item.x += item.vx * speedMult * 0.35;
-      item.y += item.vy * speedMult * 0.35;
-      item.rot += item.vrot * speedMult;
-      item.distortion += bassEnergy * 0.035;
-      const spd = Math.sqrt(item.vx*item.vx + item.vy*item.vy);
-      const cap = 16 + energy * 12;
-      if (spd > cap) { item.vx *= cap/spd; item.vy *= cap/spd; }
-      if (item.x < -90) item.x = this.width+90; if (item.x > this.width+90) item.x = -90;
-      if (item.y < -90) item.y = this.height+90; if (item.y > this.height+90) item.y = -90;
-      item.life -= 0.001;
-      if (item.life <= 0) { this.foodItems.splice(i, 1); continue; }
-      this._drawDonut(item.x, item.y, item.r, item.rot, item.colors, item.distortion, bassEnergy, item.life);
-    }
-  }
-
-  _drawDonut(x, y, r, rot, colors, distortion, bassEnergy, alpha) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, alpha);
-    ctx.translate(x, y); ctx.rotate(rot);
-
-    if (distortion > 0.3 && bassEnergy > 0.4) {
-      ctx.save(); ctx.globalAlpha *= 0.42;
-      for (const [ox, col] of [[-distortion*6, 'rgba(255,40,40,0.7)'], [distortion*6, 'rgba(40,255,255,0.7)']]) {
-        ctx.beginPath(); ctx.arc(ox, 0, r, 0, Math.PI*2, false); ctx.arc(ox, 0, r*0.42, Math.PI*2, 0, true);
-        ctx.fillStyle = col; ctx.fill();
-      }
-      ctx.restore();
-    }
-    // Shadow
-    ctx.beginPath(); ctx.ellipse(r*0.1, r*0.76, r*0.72, r*0.18, 0, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
-    // Body ring
-    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2, false); ctx.arc(0, 0, r*0.42, Math.PI*2, 0, true);
-    const bodyGrad = ctx.createRadialGradient(-r*0.2, -r*0.2, r*0.08, 0, 0, r);
-    bodyGrad.addColorStop(0, '#e8a865'); bodyGrad.addColorStop(0.5, colors.body); bodyGrad.addColorStop(1, '#5a2e0a');
-    ctx.fillStyle = bodyGrad; ctx.fill();
-    // Glaze arc on top
-    ctx.beginPath(); ctx.arc(0, 0, r*0.92, -Math.PI*0.72, Math.PI*0.38, false); ctx.arc(0, 0, r*0.46, Math.PI*0.38, -Math.PI*0.72, true); ctx.closePath();
-    const glazeGrad = ctx.createRadialGradient(-r*0.25, -r*0.25, r*0.06, 0, 0, r*0.9);
-    glazeGrad.addColorStop(0, '#ffffff'); glazeGrad.addColorStop(0.3, colors.glaze); glazeGrad.addColorStop(1, colors.glaze);
-    ctx.fillStyle = glazeGrad; ctx.fill();
-    // Glaze specular
-    ctx.beginPath(); ctx.arc(-r*0.3, -r*0.28, r*0.18, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,255,255,0.68)'; ctx.fill();
-    // Hole
-    ctx.beginPath(); ctx.arc(0, 0, r*0.4, 0, Math.PI*2); ctx.fillStyle = '#000'; ctx.fill();
-    ctx.restore();
-  }
-
-  // Paper Blizzard — dense tumbling sheets of paper and books in music-driven wind
-  drawPaper(data, energy, bassEnergy) {
-    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
-    const pSize = this.settings.patternSize;
-    const uSpeed = this.settings.speedMult;
-    const waveAmp = this.settings.waveSize / 100;
-    const windAngle = this.simPhase * 0.28;
-    const windStrength = (0.22 + energy * 0.75 + (this.bpm / 120) * 0.18) * uSpeed;
-    const windX = Math.cos(windAngle) * windStrength;
-    const windY = (0.06 + Math.abs(Math.sin(windAngle)) * 0.08) * uSpeed;
-    const speedMult = (1.0 + (this.bpm / 120) * 1.2 + energy * 1.6) * uSpeed;
-    const paperColors = ['#ffffff', '#f8f8ec', '#eeeeff', '#fff8e0'];
-    const bookColors = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085'];
-
-    const burstCount = Math.floor(beatPulse * 7);
-    const bgSpawn = Math.random() < (0.7 + energy * 0.85) ? 1 : 0;
-    for (let s = 0; s < burstCount + bgSpawn && this.paperItems.length < 580; s++) {
-      const isBook = Math.random() < 0.3;
-      const fromSide = Math.random() < 0.4;
-      this.paperItems.push({
-        x: fromSide ? (Math.random() < 0.5 ? -50 : this.width+50) : Math.random()*this.width,
-        y: fromSide ? Math.random()*this.height : -50,
-        vx: windX*(2+Math.random()*5) + (Math.random()-0.5)*10,
-        vy: 2 + Math.random()*6,
-        rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*0.32,
-        w: (isBook ? 12+Math.random()*14 : 30+Math.random()*32) * pSize,
-        h: (isBook ? 30+Math.random()*32 : 22+Math.random()*26) * pSize,
-        color: isBook ? bookColors[Math.floor(Math.random()*bookColors.length)] : paperColors[Math.floor(Math.random()*paperColors.length)],
-        isBook, wobble: Math.random()*Math.PI*2, life: 1, distortion: 0
-      });
-    }
-
-    for (let i = this.paperItems.length - 1; i >= 0; i--) {
-      const item = this.paperItems[i];
-      item.wobble += 0.055 * speedMult;
-      item.vx += windX*0.09 + Math.sin(item.wobble)*0.14*energy;
-      item.vx += Math.cos(item.wobble * 0.7) * waveAmp * 0.12;
-      item.vy += windY*0.5;
-      item.x += item.vx * speedMult * 0.38;
-      item.y += item.vy * speedMult * 0.38;
-      item.rot += item.vrot * speedMult;
-      item.distortion += bassEnergy * 0.032;
-      const spd = Math.sqrt(item.vx*item.vx + item.vy*item.vy);
-      const cap = 14 + energy * 9;
-      if (spd > cap) { item.vx *= cap/spd; item.vy *= cap/spd; }
-      if (item.x < -90) item.x = this.width+90; if (item.x > this.width+90) item.x = -90;
-      item.life -= 0.001;
-      if (item.life <= 0 || item.y > this.height + 90) { this.paperItems.splice(i, 1); continue; }
-      this._drawPaperItem(item, bassEnergy);
-    }
-  }
-
-  _drawPaperItem(item, bassEnergy) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, item.life);
-    ctx.translate(item.x, item.y); ctx.rotate(item.rot);
-    const { w, h, color, isBook, distortion } = item;
-
-    if (distortion > 0.35 && bassEnergy > 0.45) {
-      ctx.save(); ctx.globalAlpha *= 0.38;
-      ctx.fillStyle = 'rgba(255,40,40,0.5)'; ctx.fillRect(-w/2-distortion*4, -h/2, w, h);
-      ctx.fillStyle = 'rgba(40,255,255,0.5)'; ctx.fillRect(-w/2+distortion*4, -h/2, w, h);
-      ctx.restore();
-    }
-
-    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 7; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
-
-    if (isBook) {
-      ctx.fillStyle = color; ctx.fillRect(-w/2, -h/2, w, h);
-      ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-      ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(-w/2, -h/2, w*0.28, h);
-      ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(-w/2+w*0.28, -h/2, 1.5, h);
-      const sheen = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
-      sheen.addColorStop(0, 'rgba(255,255,255,0.22)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sheen; ctx.fillRect(-w/2, -h/2, w, h);
-    } else {
-      ctx.fillStyle = color; ctx.fillRect(-w/2, -h/2, w, h);
-      ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-      ctx.fillStyle = 'rgba(0,0,0,0.14)'; ctx.fillRect(w/2-3, -h/2+3, 3, h-3); ctx.fillRect(-w/2+3, h/2-3, w-3, 3);
-      ctx.strokeStyle = 'rgba(170,170,170,0.75)'; ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(w/2-10, -h/2); ctx.lineTo(w/2, -h/2+10); ctx.stroke();
-      ctx.strokeStyle = 'rgba(130,130,130,0.4)'; ctx.lineWidth = 1;
-      for (let l = 0; l < 4; l++) { const ly = -h/2 + h*0.22 + l*(h*0.18); ctx.beginPath(); ctx.moveTo(-w/2+4, ly); ctx.lineTo(w/2-(l===3?w*0.35:4), ly); ctx.stroke(); }
-      const sheen = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
-      sheen.addColorStop(0, 'rgba(255,255,255,0.38)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sheen; ctx.fillRect(-w/2, -h/2, w, h);
-    }
-    ctx.restore();
-  }
-
-  // Runway Drift — overflowing glossy faceted jewels rising with reverse gravity
+  // Diamond Stream — overflowing glossy faceted jewels rising with reverse gravity
   drawRunway(data, energy, bassEnergy) {
     const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
     const pSize = this.settings.patternSize;
