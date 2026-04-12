@@ -270,6 +270,11 @@ class Visualizer {
       this.ctx.fillRect(0, 0, this.width, this.height);
     }
 
+    // Geometric overlay renders behind the visualization
+    if (this.settings.geoOverlay !== 'none') {
+      this.drawGeoOverlay(energy, bassEnergy);
+    }
+
     // Draw visualization
     switch (this.settings.vizMode) {
       case 'bars': this.drawBars(freqData, energy); break;
@@ -283,11 +288,6 @@ class Visualizer {
       case 'food': this.drawFood(freqData, energy, bassEnergy); break;
       case 'paper': this.drawPaper(freqData, energy, bassEnergy); break;
       case 'runway': this.drawRunway(freqData, energy, bassEnergy); break;
-    }
-
-    // Geometric overlay renders on top of all modes
-    if (this.settings.geoOverlay !== 'none') {
-      this.drawGeoOverlay(energy, bassEnergy);
     }
 
     this.animFrame = requestAnimationFrame(() => this.animate());
