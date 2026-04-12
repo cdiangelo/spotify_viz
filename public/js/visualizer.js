@@ -33,6 +33,7 @@ class Visualizer {
       overlayOpacity: 0.4,
       waveSize: 80,
       colorFlash: true,
+      bounceIntensity: 0.6,
       patternSize: 1.0,   // 0.25-2.0 multiplier on item size
       speedMult: 1.0,     // 0.25-4.0 multiplier on top of music sync
       videoSpeed: 1,
@@ -284,9 +285,8 @@ class Visualizer {
       case 'runway': this.drawRunway(freqData, energy, bassEnergy); break;
     }
 
-    // Standalone modes don't use the generic geometric overlay
-    const standaloneModes = ['solitaire', 'dvd', 'vhs', 'toys', 'food', 'paper', 'runway'];
-    if (this.settings.geoOverlay !== 'none' && !standaloneModes.includes(this.settings.vizMode)) {
+    // Geometric overlay renders on top of all modes
+    if (this.settings.geoOverlay !== 'none') {
       this.drawGeoOverlay(energy, bassEnergy);
     }
 
@@ -605,9 +605,10 @@ class Visualizer {
     this.bpm = f.tempo || 120;
     this.beatInterval = 60000 / this.bpm;
 
-    // Energy → wave size (turbulence amplitude for standalone modes)
+    // Energy → wave size + bounce intensity for geo overlay
     const energy = f.energy || 0.5;
     this.settings.waveSize = 30 + energy * 170;
+    this.settings.bounceIntensity = 0.2 + energy * 0.8;
 
     // Valence/mood → color scheme
     const valence = f.valence || 0.5;
