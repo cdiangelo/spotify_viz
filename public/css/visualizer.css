@@ -16,6 +16,59 @@
   display: block;
 }
 
+/* ─── Expand Button ──────────────────────────────────────────────────────── */
+.viz-expand-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff;
+  font-size: 1.3rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  transition: background 0.2s, opacity 0.2s;
+  opacity: 0.6;
+}
+
+.viz-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  opacity: 1;
+}
+
+/* ─── Full-browser expand state ──────────────────────────────────────────── */
+body.viz-fullbrowser #app-header {
+  display: none;
+}
+
+body.viz-fullbrowser #tab-visualizer .controls-panel {
+  display: none;
+}
+
+body.viz-fullbrowser #tab-visualizer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+}
+
+body.viz-fullbrowser .viz-expand-btn {
+  opacity: 0.4;
+}
+
+body.viz-fullbrowser .viz-expand-btn:hover {
+  opacity: 1;
+}
+
 .viz-track-overlay {
   position: absolute;
   bottom: 2rem;

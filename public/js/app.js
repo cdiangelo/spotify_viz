@@ -129,6 +129,16 @@ function onPlaybackUpdate(data) {
   // Could update progress bar, etc.
 }
 
+// ─── Expand / Collapse ───────────────────────────────────────────────────────
+
+function toggleVizExpand() {
+  const expanded = document.body.classList.toggle('viz-fullbrowser');
+  document.getElementById('viz-expand-btn').textContent = expanded ? '✕' : '⛶';
+  document.getElementById('viz-expand-btn').title = expanded ? 'Exit expanded view' : 'Expand visualization';
+  // Resize canvas to fill new dimensions
+  visualizer?.resize();
+}
+
 // ─── Logout ──────────────────────────────────────────────────────────────────
 
 function logout() {
