@@ -35,13 +35,17 @@ class Visualizer {
       waveFreq: 8,
       waveSize: 80,
       colorFlash: true,
-      vizMode: 'bars'
+      vizMode: 'solitaire'
     };
 
-    // State for new standalone viz modes
+    // State for standalone viz modes
     this.solitaireCards = [];
     this.dvdLogo = { x: 100, y: 100, vx: 3, vy: 3, colorIdx: 0, hitFlash: 0 };
     this.vhsState = { slideIdx: 0, lastSlide: 0, scanY: 0, jitter: 0, transitionProgress: 1 };
+    this.toyItems = [];
+    this.foodItems = [];
+    this.paperItems = [];
+    this.runwayItems = [];
 
     // Historical landmarks drawn procedurally — each is a drawing function
     this.landmarks = [
@@ -239,10 +243,14 @@ class Visualizer {
       case 'solitaire': this.drawSolitaire(freqData, energy, bassEnergy); break;
       case 'dvd': this.drawDVD(freqData, energy, bassEnergy); break;
       case 'vhs': this.drawVHS(freqData, energy, bassEnergy); break;
+      case 'toys': this.drawToys(freqData, energy, bassEnergy); break;
+      case 'food': this.drawFood(freqData, energy, bassEnergy); break;
+      case 'paper': this.drawPaper(freqData, energy, bassEnergy); break;
+      case 'runway': this.drawRunway(freqData, energy, bassEnergy); break;
     }
 
     // Standalone modes don't use the generic geometric overlay
-    const standaloneModes = ['solitaire', 'dvd', 'vhs'];
+    const standaloneModes = ['solitaire', 'dvd', 'vhs', 'toys', 'food', 'paper', 'runway'];
     if (this.settings.geoOverlay !== 'none' && !standaloneModes.includes(this.settings.vizMode)) {
       this.drawGeoOverlay(energy, bassEnergy);
     }
@@ -942,6 +950,227 @@ class Visualizer {
       ctx.font = 'bold 14px monospace';
       ctx.textAlign = 'right';
       ctx.fillText('REC', this.width - 55, this.height - 30);
+    }
+  }
+
+  // ─── New Themed Wave Modes ─────────────────────────────────────────────────
+
+  // Helper: draw an emoji item with optional bass distortion
+  _drawEmojiItem(item, colors, bassEnergy) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(item.x, item.y);
+    ctx.rotate(item.rot);
+    ctx.globalAlpha = Math.max(0, item.life);
+    if (item.distortion > 0.3) {
+      ctx.shadowColor = colors[Math.floor(Math.random() * colors.length)];
+      ctx.shadowBlur = item.distortion * 18;
+    }
+    ctx.font = `${item.size * 2}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const dx = item.distortion > 0.5 ? (Math.random() - 0.5) * item.distortion * 8 : 0;
+    const dy = item.distortion > 0.5 ? (Math.random() - 0.5) * item.distortion * 8 : 0;
+    ctx.fillText(item.emoji, dx, dy);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // Toy Avalanche — normal downward gravity, items pile and bounce, speed from BPM
+  drawToys(data, energy, bassEnergy) {
+    const colors = this.colorSchemes[this.settings.colorScheme];
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    const speedMult = 0.5 + (this.bpm / 120) * 0.9 + energy * 1.0;
+    const toyEmojis = ['🦆', '⚽', '🎾', '🪀', '🎲', '🎯', '🎳', '🪃', '🎠', '🏀'];
+
+    const spawnRate = 0.12 + energy * 0.45 + beatPulse * 0.7;
+    if (Math.random() < spawnRate && this.toyItems.length < 220) {
+      const side = Math.floor(Math.random() * 3);
+      let x, y, vx, vy;
+      if (side === 0) { x = Math.random() * this.width; y = -50; vx = (Math.random() - 0.5) * 4; vy = 1 + Math.random() * 2; }
+      else if (side === 1) { x = -50; y = Math.random() * this.height * 0.6; vx = 2 + Math.random() * 3; vy = (Math.random() - 0.5) * 3; }
+      else { x = this.width + 50; y = Math.random() * this.height * 0.6; vx = -2 - Math.random() * 3; vy = (Math.random() - 0.5) * 3; }
+      this.toyItems.push({
+        x, y, vx, vy,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.3,
+        size: 18 + energy * 22 + Math.random() * 10,
+        emoji: toyEmojis[Math.floor(Math.random() * toyEmojis.length)],
+        life: 1, bounces: 0, distortion: 0
+      });
+    }
+
+    // Gravity is BPM-driven — faster song = more excitement / stronger pull
+    const gravity = (0.18 + (this.bpm / 120) * 0.14 + energy * 0.25) * speedMult * 0.5;
+
+    for (let i = this.toyItems.length - 1; i >= 0; i--) {
+      const item = this.toyItems[i];
+      item.vy += gravity;
+      item.x += item.vx * speedMult;
+      item.y += item.vy;
+      item.rot += item.vrot * speedMult;
+      item.distortion += bassEnergy * 0.04 + 0.001;
+
+      if (item.y + item.size > this.height) {
+        item.y = this.height - item.size;
+        item.vy *= -(0.5 + energy * 0.25);
+        item.vx *= 0.82;
+        item.bounces++;
+        item.distortion += 0.12;
+        if (item.bounces > 4) item.life -= 0.12;
+      }
+      if (item.x < -item.size) item.x = this.width + item.size;
+      if (item.x > this.width + item.size) item.x = -item.size;
+
+      item.life -= 0.003;
+      if (item.life <= 0) { this.toyItems.splice(i, 1); continue; }
+      this._drawEmojiItem(item, colors, bassEnergy);
+    }
+  }
+
+  // Food Storm — sideways gravity that shifts with the music, items wrap around screen
+  drawFood(data, energy, bassEnergy) {
+    const colors = this.colorSchemes[this.settings.colorScheme];
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    // Gravity angle drifts with simPhase so the storm direction changes with music
+    const gravityAngle = Math.sin(this.simPhase * 0.25) * 0.9;
+    const gStrength = 0.12 + energy * 0.22 + (this.bpm / 120) * 0.08;
+    const gx = Math.sin(gravityAngle) * gStrength;
+    const gy = Math.abs(Math.cos(gravityAngle)) * gStrength * 0.4 + 0.04; // always some downward component
+    const speedMult = 0.6 + (this.bpm / 120) * 0.75 + energy * 0.9;
+    const foodEmojis = ['🍩', '🍕', '🍎', '🍔', '🌮', '🍟', '🍦', '🍰', '🥨', '🥐', '🍣', '🍓'];
+
+    const spawnRate = 0.13 + energy * 0.38 + beatPulse * 0.5;
+    if (Math.random() < spawnRate && this.foodItems.length < 200) {
+      const edge = Math.floor(Math.random() * 4);
+      let x, y, vx, vy;
+      if (edge === 0) { x = Math.random() * this.width; y = -40; vx = (Math.random() - 0.5) * 5; vy = 1.5; }
+      else if (edge === 1) { x = this.width + 40; y = Math.random() * this.height; vx = -2.5; vy = (Math.random() - 0.5) * 4; }
+      else if (edge === 2) { x = -40; y = Math.random() * this.height; vx = 2.5; vy = (Math.random() - 0.5) * 4; }
+      else { x = Math.random() * this.width; y = this.height + 40; vx = (Math.random() - 0.5) * 5; vy = -2.5; }
+      this.foodItems.push({
+        x, y, vx, vy,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.18,
+        size: 18 + energy * 22 + Math.random() * 12,
+        emoji: foodEmojis[Math.floor(Math.random() * foodEmojis.length)],
+        life: 1, distortion: 0
+      });
+    }
+
+    for (let i = this.foodItems.length - 1; i >= 0; i--) {
+      const item = this.foodItems[i];
+      item.vx += gx;
+      item.vy += gy;
+      item.x += item.vx * speedMult;
+      item.y += item.vy * speedMult;
+      item.rot += item.vrot * speedMult;
+      item.distortion += bassEnergy * 0.025;
+      // Speed cap — energy raises the cap
+      const spd = Math.sqrt(item.vx * item.vx + item.vy * item.vy);
+      const cap = 8 + energy * 6;
+      if (spd > cap) { item.vx *= cap / spd; item.vy *= cap / spd; }
+      // Wrap all edges
+      if (item.x < -60) item.x = this.width + 60;
+      if (item.x > this.width + 60) item.x = -60;
+      if (item.y < -60) item.y = this.height + 60;
+      if (item.y > this.height + 60) item.y = -60;
+      item.life -= 0.0018;
+      if (item.life <= 0) { this.foodItems.splice(i, 1); continue; }
+      this._drawEmojiItem(item, colors, bassEnergy);
+    }
+  }
+
+  // Paper Blizzard — near-zero gravity, turbulent wind from music, items swirl
+  drawPaper(data, energy, bassEnergy) {
+    const colors = this.colorSchemes[this.settings.colorScheme];
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    // Wind shifts direction slowly, energy amplifies turbulence
+    const windX = Math.sin(this.simPhase * 0.4) * (0.25 + energy * 0.9);
+    const windY = 0.015 + Math.sin(this.simPhase * 0.25) * 0.03; // near-zero downward drift
+    const speedMult = 0.35 + (this.bpm / 120) * 0.55 + energy * 0.7;
+    const paperEmojis = ['📄', '📃', '📋', '📝', '📖', '📚', '📰', '🗒️', '✉️', '📜'];
+
+    const spawnRate = 0.09 + energy * 0.28 + beatPulse * 0.45;
+    if (Math.random() < spawnRate && this.paperItems.length < 160) {
+      this.paperItems.push({
+        x: Math.random() * this.width,
+        y: Math.random() < 0.6 ? -30 : Math.random() * this.height,
+        vx: (Math.random() - 0.5) * 3 + windX * 1.5,
+        vy: -0.3 + Math.random() * 1.5,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.28,
+        size: 16 + Math.random() * 18,
+        emoji: paperEmojis[Math.floor(Math.random() * paperEmojis.length)],
+        life: 1, distortion: 0,
+        wobble: Math.random() * Math.PI * 2
+      });
+    }
+
+    for (let i = this.paperItems.length - 1; i >= 0; i--) {
+      const item = this.paperItems[i];
+      item.wobble += 0.045 * speedMult;
+      // Wind turbulence — each paper wobbles independently, BPM speeds wobble
+      item.vx += windX * 0.06 + Math.sin(item.wobble) * 0.09 * (energy + 0.2);
+      item.vy += windY + Math.cos(item.wobble * 1.3) * 0.025;
+      item.x += item.vx * speedMult;
+      item.y += item.vy * speedMult;
+      item.rot += item.vrot * speedMult;
+      item.distortion += bassEnergy * 0.022;
+      // Speed cap
+      const spd = Math.sqrt(item.vx * item.vx + item.vy * item.vy);
+      const cap = 6 + energy * 4;
+      if (spd > cap) { item.vx *= cap / spd; item.vy *= cap / spd; }
+      // Wrap horizontally, remove if far off top/bottom
+      if (item.x < -60) item.x = this.width + 60;
+      if (item.x > this.width + 60) item.x = -60;
+      item.life -= 0.0014;
+      if (item.life <= 0 || item.y > this.height + 70 || item.y < -120) { this.paperItems.splice(i, 1); continue; }
+      this._drawEmojiItem(item, colors, bassEnergy);
+    }
+  }
+
+  // Runway Drift — reverse/floating gravity, fashion items rise and sway like a catwalk
+  drawRunway(data, energy, bassEnergy) {
+    const colors = this.colorSchemes[this.settings.colorScheme];
+    const beatPulse = Math.pow(Math.max(0, Math.cos(this.beatPhase)), 3);
+    const fashionEmojis = ['👗', '👠', '🧥', '👒', '👜', '💄', '💎', '👑', '🧣', '🕶️', '👡', '🥻'];
+    const speedMult = 0.5 + (this.bpm / 120) * 0.8 + energy * 0.85;
+
+    const spawnRate = 0.11 + energy * 0.35 + beatPulse * 0.55;
+    if (Math.random() < spawnRate && this.runwayItems.length < 175) {
+      this.runwayItems.push({
+        x: Math.random() * this.width,
+        y: this.height + 45, // spawn from bottom
+        vx: (Math.random() - 0.5) * 1.8,
+        vy: -(1.2 + Math.random() * 2.0 + energy * 1.8), // upward
+        rot: (Math.random() - 0.5) * 0.35,
+        size: 20 + energy * 18 + Math.random() * 10,
+        emoji: fashionEmojis[Math.floor(Math.random() * fashionEmojis.length)],
+        life: 1, distortion: 0,
+        swayPhase: Math.random() * Math.PI * 2
+      });
+    }
+
+    // Antigravity (upward pull), strength tied to energy so a high-energy track lifts faster
+    const antigravity = -(0.04 + energy * 0.09);
+
+    for (let i = this.runwayItems.length - 1; i >= 0; i--) {
+      const item = this.runwayItems[i];
+      // Sway speed tied to BPM — catwalk rhythm
+      item.swayPhase += 0.032 * speedMult * (this.bpm / 120);
+      item.vy += antigravity;
+      item.vx += Math.sin(item.swayPhase) * 0.07;
+      item.x += item.vx * speedMult;
+      item.y += item.vy * speedMult;
+      item.rot = Math.sin(item.swayPhase * 0.5) * 0.28;
+      item.distortion += bassEnergy * 0.025;
+      // Wrap horizontally
+      if (item.x < -60) item.x = this.width + 60;
+      if (item.x > this.width + 60) item.x = -60;
+      item.life -= 0.002;
+      if (item.life <= 0 || item.y < -110) { this.runwayItems.splice(i, 1); continue; }
+      this._drawEmojiItem(item, colors, bassEnergy);
     }
   }
 
